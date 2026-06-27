@@ -1,0 +1,16 @@
+.app {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 2rem;
+  font-family: system-ui, sans-serif;
+}
+
+.status .ok {
+  color: #2e7d32;
+  font-weight: 600;
+}
+
+.status .err {
+  color: #c62828;
+  font-weight: 600;
+}

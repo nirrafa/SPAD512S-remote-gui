@@ -31,14 +31,14 @@
 
 ### Tasks
 
-- [ ] Initialize git repository
-- [ ] Create Python package structure for the bridge
-- [ ] Create React/TypeScript app for the front-end
-- [ ] Set up linting, formatting, type checking for both sides
-- [ ] Write `pyproject.toml` with dev/test extras
-- [ ] Write `package.json` with scripts (dev, build, lint, test)
-- [ ] Configure pytest and vitest/jest
-- [ ] Create `.gitignore` for Python, Node, OS files
+- [x] Initialize git repository
+- [x] Create Python package structure for the bridge
+- [x] Create React/TypeScript app for the front-end
+- [x] Set up linting, formatting, type checking for both sides
+- [x] Write `pyproject.toml` with dev/test extras
+- [x] Write `package.json` with scripts (dev, build, lint, test)
+- [x] Configure pytest and vitest/jest
+- [x] Create `.gitignore` for Python, Node, OS files
 
 ### File tree after this phase
 
@@ -75,10 +75,10 @@
 
 ### Validation gate
 
-- [ ] `pip install -e ".[dev]"` succeeds
-- [ ] `pytest --collect-only` discovers test infrastructure
-- [ ] `npm install && npm run build` produces a bundle
-- [ ] `uvicorn bridge.main:app` starts and responds to `GET /api/health`
+- [x] `pip install -e ".[dev]"` succeeds
+- [x] `pytest --collect-only` discovers test infrastructure
+- [x] `npm install && npm run build` produces a bundle
+- [x] `uvicorn bridge.main:app` starts and responds to `GET /api/health`
 
 ---
 
@@ -925,4 +925,8 @@ Phases 4–12 can be parallelized after Phase 3, but the recommended order above
 
 | Date | Decision | Rationale |
 |---|---|---|
-| | | |
+| 2026-06-27 | Target Python 3.11 (via `~/.local/bin/python3.11`), not system 3.9 | Pydantic v2 / modern FastAPI; `.venv` created with 3.11 |
+| 2026-06-27 | Frontend uses Vite's current React-TS template (React 19, oxlint, vitest) | Default modern toolchain; oxlint replaces ESLint, faster |
+| 2026-06-27 | Config via `pydantic-settings` with `SPAD_` env prefix | Typed settings, env-overridable for host deployment |
+| 2026-06-27 | Vite dev proxy forwards `/api` + `/ws` to bridge at `127.0.0.1:8080` | SPA dev server talks to bridge without CORS friction |
+| 2026-06-27 | Repo: public GitHub `nirrafa/SPAD512S-remote-gui` | Per user request |
