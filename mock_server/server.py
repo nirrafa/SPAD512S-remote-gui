@@ -21,12 +21,14 @@ class MockVendorTCPServer:
         self.port = port
         self.state = state or MockState()
         self._server: asyncio.Server | None = None
+        self._clients: set[asyncio.StreamWriter] = set()
 
     async def _handle_client(
         self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter
     ) -> None:
         writer.write(BANNER)
         await writer.drain()
+        self._clients.add(writer)
         try:
             while True:
                 data = await reader.read(_READ_SIZE)
@@ -41,14 +43,15 @@ class MockVendorTCPServer:
                 result = handle(command, self.state)
                 if result.wire_bytes is not None:
                     writer.write(result.wire_bytes + b"DONE")
-                elif result.is_error:
-                    writer.write(f"{result.text}\n".encode())
                 else:
+                    # Errors also terminate with DONE (text carries "ERROR")
+                    # so read-until-DONE consumers never hang; see decoder.py.
                     writer.write(f"{result.text}\nDONE".encode())
                 await writer.drain()
         except (ConnectionResetError, asyncio.IncompleteReadError):
             pass
         finally:
+            self._clients.discard(writer)
             writer.close()
 
     async def start(self) -> None:
@@ -71,6 +74,9 @@ class MockVendorTCPServer:
         return int(self._server.sockets[0].getsockname()[1])
 
     async def stop(self) -> None:
+        for writer in list(self._clients):
+            writer.close()
+        self._clients.clear()
         if self._server is not None:
             self._server.close()
             await self._server.wait_closed()

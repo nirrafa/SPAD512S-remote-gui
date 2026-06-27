@@ -12,6 +12,7 @@ import numpy as np
 
 from mock_server import synthetic_data as synth
 from mock_server.state import (
+    GATED_BIT_DEPTHS,
     INT_BIT_DEPTHS,
     SENSOR_ROWS,
     VALID_WIDTHS,
@@ -164,11 +165,16 @@ def _resolve_bit_depth(value: int) -> int:
     return value if value in INT_BIT_DEPTHS else 8
 
 
+def _resolve_gated_bit_depth(value: int) -> int:
+    # Gated mode does not support 1-bit or 4-bit (vendor: depths 6-12 only).
+    return value if value in GATED_BIT_DEPTHS else 8
+
+
 def _handle_intensity(args: list[str], state: MockState) -> CommandResult:
-    # I,<bit>,<intTime>,<iters>,0,<overlap>,0,1,<width>
+    # I,<bit>,<intTime>,<iters>,0,<overlap>,0,1,<width>  (width is arg index 7)
     bit_depth = _resolve_bit_depth(_coerce_int(args[0], 8)) if len(args) > 0 else 8
     iterations = _coerce_int(args[2], 1) if len(args) > 2 else 1
-    width = _resolve_width(_coerce_int(args[8], SENSOR_ROWS)) if len(args) > 8 else SENSOR_ROWS
+    width = _resolve_width(_coerce_int(args[7], SENSOR_ROWS)) if len(args) > 7 else SENSOR_ROWS
 
     frames = [
         synth.intensity_frame(width, bit_depth, state.seed + i) for i in range(iterations)
@@ -183,7 +189,7 @@ def _handle_intensity(args: list[str], state: MockState) -> CommandResult:
 
 def _handle_gated(args: list[str], state: MockState) -> CommandResult:
     # G,<bit>,<intTime>,<iters>,<steps>,...
-    bit_depth = _resolve_bit_depth(_coerce_int(args[0], 8)) if len(args) > 0 else 8
+    bit_depth = _resolve_gated_bit_depth(_coerce_int(args[0], 8)) if len(args) > 0 else 8
     iterations = _coerce_int(args[2], 1) if len(args) > 2 else 1
     gate_steps = _coerce_int(args[3], 10) if len(args) > 3 else 10
     width = SENSOR_ROWS

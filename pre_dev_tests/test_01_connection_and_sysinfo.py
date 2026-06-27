@@ -4,7 +4,12 @@ PRD §1 — Connection & System Info
 Tests that the bridge connects to the vendor server, exposes system
 information, and surfaces laser/frame clock diagnostics.
 """
-import pytest
+import time
+
+from fastapi.testclient import TestClient
+
+from bridge.config import Settings
+from bridge.main import create_app
 
 
 class TestBridgeConnection:
@@ -19,8 +24,17 @@ class TestBridgeConnection:
     def test_bridge_configurable_port(self, mock_vendor_server):
         """Bridge accepts a configurable port for the vendor server,
         not hardcoded to 9999."""
-        # Start bridge with port=9998, verify it connects
-        raise NotImplementedError
+        mock_vendor_server.start()
+        assert mock_vendor_server.port != 9999
+        settings = Settings(vendor_host="127.0.0.1", vendor_port=mock_vendor_server.port)
+        with TestClient(create_app(settings)) as client:
+            data = client.get("/api/status").json()
+            for _ in range(25):
+                if data["vendor_connected"]:
+                    break
+                time.sleep(0.2)
+                data = client.get("/api/status").json()
+        assert data["vendor_connected"] is True
 
     def test_browser_connects_to_bridge(self, bridge_client):
         """SPA can reach the bridge over HTTP on the LAN."""
