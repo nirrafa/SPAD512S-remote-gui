@@ -5,10 +5,9 @@ import time
 from collections.abc import Iterator
 
 import pytest
-from fastapi.testclient import TestClient
-
 from bridge.config import Settings
 from bridge.main import create_app
+from fastapi.testclient import TestClient
 from mock_server.harness import MockVendorServer
 
 

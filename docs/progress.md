@@ -12,7 +12,7 @@
 |---|---|---|---|
 | 0 | Project setup & tooling | ✅ Done | gate ✓ |
 | 1 | Mock vendor server | ✅ Done | 19 / 19 |
-| 2 | Bridge core | Not started | 0 / 19 |
+| 2 | Bridge core | ✅ Done | 17 / 19 (test_01 14 + reconnect 3; rest of test_12 is Phase 9) |
 | 3 | Intensity mode (vertical slice) | Not started | 0 / 16 |
 | 4 | Gated time-resolved mode | Not started | 0 / 12 |
 | 5 | FLIM mode | Not started | 0 / 9 |
@@ -60,6 +60,34 @@ Copy this block for each new entry. Most recent session goes on top.
 ---
 
 <!-- Add new entries below this line, most recent first -->
+
+### 2026-06-27 — Phase 2: bridge core
+
+**Phase(s):** 2
+**Duration:** ~2h
+**Who:** Nir + Claude
+
+#### Done
+- **Protocol layer** (`bridge/protocol/`): `client.py` async TCP client (banner + double-D breakdown handshake, `send_command`/`send_acquire`, asyncio-lock serialization, **passive idle-EOF disconnect detection**, auto-reconnect with backoff on a fixed port); `decoder.py` (`strip_done`, `parse_system_info`, `parse_readout`, `bytes_per_frame`); `commands.py` builders.
+- **Core** (`bridge/core/`): `instrument.py` (idle/acquiring/calibrating/stopping + busy guard) and `ws_hub.py` (registry + broadcast_*; drops dead clients).
+- **Routes**: `/api/health`, `/api/status`, `/api/system/info`, `/api/system/triggers`, `/api/acquire/stop`, `/api/acquire/intensity` (connection-guarded minimal acquire), `WS /ws`. Rewrote `main.py` with a lifespan that connects on startup; `create_app(settings)` for port override.
+- Extended the mock: TCP server closes active connections on `stop()`; `MockVendorServer` gained `start()/stop()/port` (same-port rebind) so it serves both the in-process harness (test_14) and bridge integration.
+- Wired `pre_dev_tests` `bridge_client` fixture (HTTP/WS wrapper) and the `mock_vendor_server` TCP lifecycle.
+- **Gate green:** `test_01` 14/14, `test_12::TestAutoReconnect` 3/3. Default `tests/` suite expanded (bridge API + mock TCP regressions) → all pass. ruff + mypy(strict) clean. Added `pytest-timeout` (default 60s).
+
+#### Decisions made
+- Passive idle-EOF disconnect detection; same-port mock rebind; Phase-2 "queue" = lock + busy guard (formal queue deferred to Phase 3/8); fleshed out the `test_bridge_configurable_port` stub. (See plan.md decisions log.)
+
+#### Bugs / issues encountered
+- FastAPI on Py3.11 requires `typing_extensions.TypedDict` (not `typing.TypedDict`) for response models → fixed import.
+- TestClient lifespan hung on teardown when a `/ws` connection was left open, and surfaced a `CancelledError` when the bridge was disconnected at shutdown. Fixed by closing tracked WS handles in the client wrapper and making `protocol.stop()` cancel+await all tasks without `wait_closed`. Recorded in learnings.md.
+- Latent bug: intensity ROI width is arg index 7 (not 8) of the `I` command — corrected in the mock.
+
+#### Blocked on
+- Nothing.
+
+#### Next session
+- Phase 3: intensity vertical slice. Full intensity endpoint (param validation, µs/ms unit switch, decode all bit depths, downsampled preview over WS, file save) + the front-end intensity panel + image canvas. Targets `test_02` (11) and `test_13` concurrency/busy (the formal queue lands here).
 
 ### 2026-06-27 — Phase 1: mock vendor server
 

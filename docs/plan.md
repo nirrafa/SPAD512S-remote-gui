@@ -188,38 +188,31 @@ mock_server/
 
 ### Tasks
 
-- [ ] Protocol client: async wrapper around `cSPAD.py` logic
-  - Async TCP connect with configurable host/port
-  - Handle welcome banner + breakdown calibration handshake on connect
-  - `send_command(cmd: str) -> str` for text responses
-  - `send_acquire(cmd: str, ...) -> np.ndarray` for binary image data
-  - Auto-reconnect on connection loss with exponential backoff
-  - Connection state observable (connected/disconnected/reconnecting)
-- [ ] Command queue: `asyncio.Queue` with a single consumer task
-  - Accept `CommandRequest` objects (command string, response future)
-  - Reject new commands while an acquisition is running (return busy error)
-  - Allow health-poll commands (`R`, `V`, `S`) to bypass queue when idle
-- [ ] Instrument state manager
-  - States: `idle`, `acquiring`, `calibrating`, `stopping`
-  - Track current operation metadata (mode, params, progress)
-  - Broadcast state changes to all WebSocket clients
-- [ ] WebSocket hub
-  - Client registry (connect/disconnect tracking)
-  - Broadcast methods: `broadcast_state()`, `broadcast_progress()`, `broadcast_preview()`, `broadcast_alarm()`
-  - Per-client message queue to handle slow consumers
-- [ ] REST API skeleton
-  - `GET /api/health` — bridge health
-  - `GET /api/status` — vendor connection + instrument state
-  - `GET /api/system/info` — system info (D command)
-  - `GET /api/system/triggers` — laser/frame frequencies (R command)
-  - `POST /api/acquire/stop` — safe-boundary stop
-  - WebSocket endpoint: `WS /ws`
-- [ ] Configuration via environment variables / config file
-  - `VENDOR_HOST` (default `127.0.0.1`)
-  - `VENDOR_PORT` (default `9999`)
-  - `BRIDGE_HOST` (default `0.0.0.0`)
-  - `BRIDGE_PORT` (default `8080`)
-- [ ] CORS middleware for LAN access (allow all origins on LAN)
+- [x] Protocol client: async wrapper around `cSPAD.py` logic
+  - [x] Async TCP connect with configurable host/port
+  - [x] Handle welcome banner + breakdown calibration handshake on connect (double-D)
+  - [x] `send_command(cmd: str) -> str` for text responses (DONE-stripping)
+  - [x] `send_acquire(cmd: str, ...) -> bytes` for binary image data
+  - [x] Auto-reconnect on connection loss with exponential backoff (fixed-port rebind)
+  - [x] Connection state observable + **passive idle-EOF disconnect detection**
+- [~] Command queue: serialization via the protocol client's asyncio lock + instrument busy guard
+  - [x] Reject new commands while an acquisition is running (busy error)
+  - [ ] Formal `asyncio.Queue` consumer + health-poll bypass — deferred to Phase 3 (`test_13`) / Phase 8
+- [x] Instrument state manager
+  - [x] States: `idle`, `acquiring`, `calibrating`, `stopping`
+  - [ ] Track current operation metadata (mode, params, progress) — Phase 3
+  - [x] Broadcast state changes to all WebSocket clients
+- [x] WebSocket hub
+  - [x] Client registry (connect/disconnect tracking)
+  - [x] Broadcast methods: `broadcast_state/progress/preview/alarm`
+  - [x] Tolerates slow/dead clients (drops on send failure)
+- [x] REST API skeleton
+  - [x] `GET /api/health`, `GET /api/status`
+  - [x] `GET /api/system/info`, `GET /api/system/triggers`
+  - [x] `POST /api/acquire/stop` (minimal; safe-boundary refinement in Phase 9)
+  - [x] `WS /ws`
+- [x] Configuration via environment variables (`SPAD_` prefix; vendor/bridge host+port)
+- [x] CORS middleware for LAN access (allow all origins)
 
 ### Files
 
@@ -250,13 +243,13 @@ bridge/
 
 ### Validation gate
 
-- [ ] Bridge starts, connects to mock server, `GET /api/status` returns `vendor_connected: true`
-- [ ] `GET /api/system/info` returns parsed FPGA serials, versions, features
-- [ ] `GET /api/system/triggers` returns laser/frame frequencies
-- [ ] WebSocket connects, receives state broadcasts
-- [ ] Mock server restart → bridge auto-reconnects
-- [ ] `pre_dev_tests/test_01_connection_and_sysinfo.py` — all 14 tests pass
-- [ ] `pre_dev_tests/test_12_bridge_reliability.py` — reconnect tests pass
+- [x] Bridge starts, connects to mock server, `GET /api/status` returns `vendor_connected: true`
+- [x] `GET /api/system/info` returns parsed FPGA serials, versions, features
+- [x] `GET /api/system/triggers` returns laser/frame frequencies
+- [x] WebSocket connects, receives state broadcasts
+- [x] Mock server restart → bridge auto-reconnects
+- [x] `pre_dev_tests/test_01_connection_and_sysinfo.py` — all 14 tests pass
+- [x] `pre_dev_tests/test_12_bridge_reliability.py` — `TestAutoReconnect` (3 tests) pass
 
 ---
 
@@ -931,3 +924,8 @@ Phases 4–12 can be parallelized after Phase 3, but the recommended order above
 | 2026-06-27 | Repo: public GitHub `nirrafa/SPAD512S-remote-gui` | Per user request |
 | 2026-06-27 | Mock = shared pure protocol core + two front-ends (in-process harness, asyncio TCP) | One source of truth exercised by both spec tests and the real cSPAD client |
 | 2026-06-27 | `F,i` returns phasor data only in Phase 1; CSV-line FLIM text format deferred to Phase 5 | test_14 only needs `last_phasor_data`; text decoder belongs with FLIM work |
+| 2026-06-27 | Bridge detects disconnect *passively* via an idle EOF watcher (read(1) between commands) | `/api/status` must report disconnected with no retry and no health poll; the protocol is request/response so an idle read only returns on EOF |
+| 2026-06-27 | Mock TCP server closes active connections on `stop()` and rebinds the **same port** on restart | Needed for the bridge to observe the drop and to reconnect to a stable address |
+| 2026-06-27 | Phase 2 command "queue" = protocol-client asyncio lock + instrument busy guard; formal queue deferred | Lock already serializes; busy-rejection queue + health bypass are driven by `test_13` (Phase 3) and Phase 8 |
+| 2026-06-27 | Added `pytest-timeout` (default 60s, thread method) | A blocked WebSocket/lifespan can hang the suite; per-test timeout surfaces *where* |
+| 2026-06-27 | Fleshed out stub test `test_01::test_bridge_configurable_port` | Spec stub raised `NotImplementedError`; gate requires all 14 — implemented faithfully (connect on a non-9999 port) |

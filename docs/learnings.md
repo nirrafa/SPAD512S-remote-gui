@@ -164,7 +164,21 @@ Full 512×512 16-bit images at high frame rates will saturate a LAN WebSocket. D
 
 ## Python / FastAPI
 
-<!-- Add entries as patterns and gotchas are discovered -->
+### Detect a passive TCP disconnect with an idle EOF watcher
+
+For a request/response protocol on a single socket (like cSPAD), you cannot tell the connection dropped until your next send fails — but the UI needs `/api/status` to report disconnected *immediately*, with no polling of the hardware. Solution: between commands, run a background task that does `await reader.read(1)`. Since the peer never sends unsolicited data when idle, this only returns on EOF (`b""`) → mark disconnected. Before sending a command, cancel the watcher; after reading the response, restart it. The command lock guarantees the watcher and a command never read the socket concurrently. See `bridge/protocol/client.py`.
+
+### `typing_extensions.TypedDict`, not `typing.TypedDict`, for FastAPI response models on Python < 3.12
+
+If a route's return type is a `TypedDict` built from `typing.TypedDict`, pydantic v2 raises `PydanticUserError: Please use typing_extensions.TypedDict ... on Python < 3.12` when generating the schema. Import `TypedDict` from `typing_extensions` (already a pydantic dependency).
+
+### Starlette `TestClient` lifespan can hang or raise on teardown
+
+Two failure modes hit during Phase 2, both surfacing as a hung `portal thread.join()` or a `CancelledError` from the lifespan task on `client.__exit__()`:
+1. **An open WebSocket** whose server handler is blocked in `await ws.receive_text()` prevents shutdown. The test/client wrapper must close every WebSocket it opened before exiting the `TestClient`.
+2. **Background `asyncio.create_task` tasks** (e.g. a reconnect loop) left running when the bridge is disconnected at shutdown. The lifespan's shutdown must `cancel()` *and* `await` every such task (suppressing `BaseException`), and avoid `writer.wait_closed()` which can block. Orphaned tasks spawned outside an anyio task group surface as `CancelledError` through the lifespan.
+
+Use `pytest-timeout` (`--timeout=60 --timeout-method=thread`) so a hang produces a traceback pointing at the blocked line instead of stalling the whole suite.
 
 ---
 
