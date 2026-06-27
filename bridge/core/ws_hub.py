@@ -27,7 +27,7 @@ class WebSocketHub:
 
     async def broadcast(self, message: dict[str, Any]) -> None:
         dead: list[WebSocket] = []
-        for client in self._clients:
+        for client in list(self._clients):
             try:
                 await client.send_json(message)
             except Exception:

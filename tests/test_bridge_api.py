@@ -83,3 +83,34 @@ def test_intensity_rejected_while_disconnected(
     ).json()
     assert resp["status"] == "error"
     assert "disconnected" in resp["message"].lower()
+
+
+def test_invalid_roi_width_rejected_without_desync(client: TestClient) -> None:
+    # Review finding #2: an out-of-range roi_width must be rejected before it
+    # reaches the vendor, and must not desync the stream for later commands.
+    bad = client.post(
+        "/api/acquire/intensity",
+        json={"bit_depth": 8, "integration_time": 100, "roi_width": 300},
+    ).json()
+    assert bad["status"] == "error"
+    assert "roi_width" in bad["message"]
+
+    # The connection is still healthy and in sync.
+    diag = client.get("/api/system/triggers").json()
+    assert diag["laser_frequency_hz"] > 0
+    ok = client.post(
+        "/api/acquire/intensity",
+        json={"bit_depth": 8, "integration_time": 100, "roi_width": 512},
+    ).json()
+    assert ok["status"] == "done"
+
+
+def test_invalid_bit_depth_rejected(client: TestClient) -> None:
+    resp = client.post(
+        "/api/acquire/intensity",
+        json={"bit_depth": 5, "integration_time": 100, "roi_width": 512},
+    ).json()
+    assert resp["status"] == "error"
+    assert "bit_depth" in resp["message"]
+
+

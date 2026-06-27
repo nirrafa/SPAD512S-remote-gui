@@ -67,20 +67,6 @@ index). Every new hand-indexed arg is a fresh opportunity for the same bug.
 **Suggested fix:** Extract `arg_int(args, n, default)` collapsing the length check
 and coercion into one call; convert the existing sites.
 
-### B-08 — Bridge `_read_binary(expected_bytes=…)` cannot detect a truncated/errored acquisition · S2 (bridge-side)
-
-**Where:** [`bridge/protocol/client.py`](../bridge/protocol/client.py) `_read_binary`.
-**Mechanism:** When `expected_bytes` is known, the reader does
-`readexactly(expected_bytes + 4)`. If the vendor aborts an acquisition and returns
-a short `…ERROR…DONE` frame instead of the full payload, `readexactly` blocks until
-`read_timeout` and surfaces a `TimeoutError` rather than recognising the `ERROR`.
-**Relation:** Discovered while fixing **B-02**. The mock now terminates errored
-acquisitions with `DONE` (so the streaming read path breaks), but the
-`expected_bytes` path still can't surface a clean error.
-**Suggested fix:** Have `_read_binary` peek for a leading `ERROR` / short frame
-before/while doing the exact read, or fall back to the streaming loop and validate
-length afterward. Address in the Phase 2/9 reliability work.
-
 ---
 
 ## Fixed
@@ -90,6 +76,13 @@ length afterward. Address in the Phase 2/9 reliability work.
 | B-01 | S1 | `_handle_intensity` read ROI width from arg index 8; the `I` command places width at index 7, so any `im_width≠512` was silently ignored → `cSPAD` reshape `ValueError`. | Phase 1 review fixes | `tests/test_mock_tcp.py::test_intensity_honors_non_512_roi_width` (+ cSPAD `im_width=256` smoke) |
 | B-02 | S2 | Fault injected during a binary acquisition returned text with no terminator → `cSPAD`/bridge read-until-`DONE` loops hung. Mock now terminates errors with `DONE` while keeping `ERROR` in the text (matches `bridge/protocol/decoder.py`). | Phase 1 review fixes | `tests/test_mock_tcp.py::test_fault_injected_acquisition_terminates_with_done` |
 | B-03 | S2 | `GATED_BIT_DEPTHS` was unused and gated validated against `INT_BIT_DEPTHS`, wrongly accepting 1/4-bit (vendor: gated is 6–12 only). Added `_resolve_gated_bit_depth`. | Phase 1 review fixes | `tests/test_mock_tcp.py::test_gated_rejects_sub_six_bit_depth` |
+| B-08 | S2 | Bridge `_read_binary(expected_bytes)` used `readexactly` and couldn't detect a short/errored frame (hung to timeout → false disconnect). Now reads until `DONE`, raises `ProtocolError` on a leading `ERROR`, and validates payload length. | Phase 2 review fixes | `tests/test_bridge_api.py::test_invalid_roi_width_rejected_without_desync` (length-mismatch path) |
+| B-09 | S1 | `WebSocketHub.broadcast` iterated the live client set across an `await`; a concurrent connect/disconnect raised `RuntimeError: Set changed size during iteration`, aborting the broadcast. Now iterates a `list(...)` snapshot. | Phase 2 review fixes | `tests/test_ws_hub.py::test_broadcast_survives_concurrent_connect` |
+| B-10 | S1 | `/api/acquire/intensity` did not validate `roi_width`/`bit_depth`; an out-of-range width made bridge `expected_bytes` disagree with the vendor's clamped width → wrong-sized read + leftover bytes corrupting the next command. Now validated against `ROI_WIDTHS_*`/`INT_BIT_DEPTHS` before sending. | Phase 2 review fixes | `tests/test_bridge_api.py::{test_invalid_roi_width_rejected_without_desync,test_invalid_bit_depth_rejected}` |
+| B-11 | S2 | CORS used `allow_origins=["*"]` with `allow_credentials=True` — an invalid combination browsers reject for credentialed requests. Set `allow_credentials=False` (unauthenticated LAN tool). | Phase 2 review fixes | n/a (config) |
+| B-12 | S3 | On passive disconnect, `_teardown` cancelled the running idle task then `await`ed `wait_closed()`, so the `CancelledError` skipped the `_reader`/`_writer = None` resets. Refs now cleared before the cancellable await. | Phase 2 review fixes | covered by `TestAutoReconnect` |
+| B-13 | S2 | A vendor `ERROR` reply to a text command was returned as a normal string → downstream parser raised `ValueError` (HTTP 500). `send_command` now raises `ProtocolError`; `/api/system/triggers` returns 502. | Phase 2 review fixes | covered by `ProtocolError` path |
+| B-14 | S3 | Default-suite `client` fixture built the app on vendor port 9999 with no mock, so tests could connect to a stray dev mock. Now uses an unused ephemeral port. | Phase 2 review fixes | n/a (isolation) |
 
 ---
 

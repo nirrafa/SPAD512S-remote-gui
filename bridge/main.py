@@ -49,10 +49,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app = FastAPI(title="SPAD512² Bridge", version=__version__, lifespan=lifespan)
     app.state.settings = settings
 
+    # Unauthenticated LAN tool: wildcard origins, no credentials. ("*" + credentials
+    # is an invalid CORS combination that browsers reject.)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],
-        allow_credentials=True,
+        allow_credentials=False,
         allow_methods=["*"],
         allow_headers=["*"],
     )

@@ -11,8 +11,13 @@ from pydantic import BaseModel, ConfigDict
 
 from bridge.core.instrument import InstrumentState, InstrumentStatus
 from bridge.protocol import commands
-from bridge.protocol.client import NotConnectedError, ProtocolClient
-from bridge.protocol.decoder import bytes_per_frame
+from bridge.protocol.client import NotConnectedError, ProtocolClient, ProtocolError
+from bridge.protocol.decoder import (
+    INT_BIT_DEPTHS,
+    ROI_WIDTHS_512,
+    ROI_WIDTHS_1024,
+    bytes_per_frame,
+)
 
 router = APIRouter(prefix="/api/acquire")
 
@@ -55,7 +60,16 @@ async def acquire_intensity(request: Request, params: IntensityRequest) -> dict[
     if instrument.is_busy:
         return {"status": "busy", "message": "instrument busy"}
 
-    rows = protocol.system_info["sensor_size"] if protocol.system_info else 512
+    sensor_size = protocol.system_info["sensor_size"] if protocol.system_info else 512
+    valid_widths = ROI_WIDTHS_1024 if sensor_size == 1024 else ROI_WIDTHS_512
+    if params.bit_depth not in INT_BIT_DEPTHS:
+        return {"status": "error", "message": f"invalid bit_depth {params.bit_depth}"}
+    if params.roi_width not in valid_widths:
+        return {"status": "error", "message": f"invalid roi_width {params.roi_width}"}
+    if params.iterations < 1:
+        return {"status": "error", "message": "iterations must be >= 1"}
+
+    rows = sensor_size
     expected = params.iterations * bytes_per_frame(
         params.bit_depth, rows, params.roi_width, params.pileup_correction
     )
@@ -72,10 +86,10 @@ async def acquire_intensity(request: Request, params: IntensityRequest) -> dict[
         await protocol.send_command(commands.pileup(params.pileup_correction))
         data = await protocol.send_acquire(command, expected_bytes=expected)
     except NotConnectedError:
-        await instrument.set(InstrumentStatus.IDLE)
         return {"status": "error", "message": "vendor disconnected"}
+    except ProtocolError as exc:
+        return {"status": "error", "message": str(exc)}
     finally:
-        if instrument.status != InstrumentStatus.IDLE:
-            await instrument.set(InstrumentStatus.IDLE)
+        await instrument.set(InstrumentStatus.IDLE)
 
     return {"status": "done", "bytes": len(data), "frames": params.iterations}

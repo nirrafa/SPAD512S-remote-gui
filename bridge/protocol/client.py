@@ -27,6 +27,14 @@ class NotConnectedError(RuntimeError):
     """Raised when a command is attempted while the vendor is disconnected."""
 
 
+class ProtocolError(RuntimeError):
+    """Raised when the vendor returns an ERROR frame or an unexpected payload.
+
+    Distinct from :class:`NotConnectedError`: the connection is healthy, so the
+    caller should surface the error rather than trigger a reconnect.
+    """
+
+
 class ProtocolClient:
     def __init__(
         self,
@@ -122,12 +130,13 @@ class ProtocolClient:
 
     async def _teardown(self) -> None:
         self._cancel_idle()
-        if self._writer is not None:
-            self._writer.close()
-            with contextlib.suppress(Exception):
-                await self._writer.wait_closed()
+        writer = self._writer
         self._reader = None
         self._writer = None
+        if writer is not None:
+            writer.close()
+            with contextlib.suppress(Exception):
+                await writer.wait_closed()
 
     async def _handle_disconnect(self) -> None:
         if not self._connected:
@@ -176,6 +185,8 @@ class ProtocolClient:
                 await self._handle_disconnect()
                 raise NotConnectedError("vendor disconnected during command") from exc
             self._start_idle_watch()
+            if text.lstrip().startswith("ERROR"):
+                raise ProtocolError(text.strip())
             return text
 
     async def send_acquire(self, command: str, expected_bytes: int | None = None) -> bytes:
@@ -212,15 +223,33 @@ class ProtocolClient:
     async def _read_binary(
         self, reader: asyncio.StreamReader, expected_bytes: int | None
     ) -> bytes:
-        if expected_bytes is not None:
-            payload = await asyncio.wait_for(
-                reader.readexactly(expected_bytes + 4), self.read_timeout
-            )
-            return payload[:-4]
+        """Read an acquisition payload terminated by ``DONE``.
+
+        Always terminates on the ``DONE`` sentinel rather than a fixed length, so
+        a short ``ERROR`` frame surfaces as a :class:`ProtocolError` instead of
+        stalling until the read timeout and masquerading as a disconnect.
+        ``expected_bytes`` (when known) gates premature termination on binary
+        data that happens to end in ``DONE`` and is validated afterwards.
+        """
+        target = None if expected_bytes is None else expected_bytes + 4
         buffer = bytearray()
-        while not buffer.endswith(b"DONE"):
+        while True:
+            if buffer.endswith(b"DONE") and (
+                target is None
+                or len(buffer) >= target
+                or buffer[:-4].lstrip().startswith(b"ERROR")
+            ):
+                break
             chunk = await asyncio.wait_for(reader.read(65536), self.read_timeout)
             if not chunk:
                 raise ConnectionError("EOF during binary read")
             buffer.extend(chunk)
-        return bytes(buffer[:-4])
+
+        payload = bytes(buffer[:-4])
+        if payload.lstrip().startswith(b"ERROR"):
+            raise ProtocolError(payload.decode("utf-8", errors="ignore").strip())
+        if expected_bytes is not None and len(payload) != expected_bytes:
+            raise ProtocolError(
+                f"acquisition length mismatch: expected {expected_bytes}, got {len(payload)}"
+            )
+        return payload
