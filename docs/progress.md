@@ -11,7 +11,7 @@
 | Phase | Description | Status | Tests passing |
 |---|---|---|---|
 | 0 | Project setup & tooling | ✅ Done | gate ✓ |
-| 1 | Mock vendor server | Not started | 0 / 19 |
+| 1 | Mock vendor server | ✅ Done | 19 / 19 |
 | 2 | Bridge core | Not started | 0 / 19 |
 | 3 | Intensity mode (vertical slice) | Not started | 0 / 16 |
 | 4 | Gated time-resolved mode | Not started | 0 / 12 |
@@ -60,6 +60,37 @@ Copy this block for each new entry. Most recent session goes on top.
 ---
 
 <!-- Add new entries below this line, most recent first -->
+
+### 2026-06-27 — Phase 1: mock vendor server
+
+**Phase(s):** 1
+**Duration:** ~1h
+**Who:** Nir + Claude
+
+#### Done
+- Built the mock vendor server as a shared protocol core feeding two front-ends:
+  - `mock_server/state.py` — `MockState` (temps, voltages, freqs, toggles, calibration flags) + test hooks (`set_temperature`, `set_voltage`, `set_laser_frequency`, `fail_after_n_commands`, `set_next_response_delay`).
+  - `mock_server/synthetic_data.py` — numpy generators (intensity frame, gated stack, FLIM phasor) + wire encoders for all three intensity byte layouts (1-bit packed, ≤8-bit 1 byte/px, ≥9-bit/pileup 2 byte/px little-endian).
+  - `mock_server/protocol.py` — pure `handle(cmd, state) -> CommandResult` dispatching D, V, R, AE, S, PU, CALIB, I, G, Ga, Gf, F + unknown→ERROR.
+  - `mock_server/harness.py` — `MockVendorServer` in-process API (`send_command`, `last_image_data`, `last_phasor_data`) used by the spec tests.
+  - `mock_server/server.py` — asyncio TCP server (banner, read loop, binary+DONE framing); `cli.py` + `__main__.py` for `python -m mock_server --port 9999`.
+- Wired `pre_dev_tests/conftest.py` `mock_vendor_server` fixture → `MockVendorServer`.
+- **`test_14` → 19/19 pass.** Added `tests/test_mock_tcp.py` (3 fast asyncio TCP regression tests).
+- Verified the **real `cSPAD.py`** connects over TCP and runs `get_info()`/`get_temps()`/`get_freq()`/`get_intensity()` → valid `(512,512,1)` uint16 array.
+- ruff + mypy(strict) clean on `mock_server`.
+
+#### Decisions made
+- Shared pure-protocol core (`protocol.handle`) behind both the in-process harness and the TCP server, so the spec tests and the real client exercise the same logic.
+- `F,i` returns phasor data only for now; the CSV-line FLIM **text** format is deferred to Phase 5.
+
+#### Bugs / issues encountered
+- `DONE` framing glues onto the last field of text responses (e.g. `get_freq()` → `'100.0\nDONE'`). Recorded in learnings.md; the bridge's `R`/`V` decoder (Phase 2) must strip a trailing `DONE` before parsing.
+
+#### Blocked on
+- Nothing.
+
+#### Next session
+- Phase 2: bridge core. Async protocol client wrapping cSPAD logic (with DONE-stripping decoder), command queue, instrument state, WebSocket hub, REST skeleton. Targets `test_01` (14) + `test_12` reconnect tests.
 
 ### 2026-06-27 — Phase 0: project setup & tooling
 

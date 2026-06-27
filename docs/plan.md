@@ -114,30 +114,29 @@ The vendor server speaks a simple ASCII protocol over TCP:
 
 ### Tasks
 
-- [ ] Implement TCP listener with asyncio (bind `127.0.0.1`, configurable port)
-- [ ] Parse incoming ASCII commands and dispatch to handlers
-- [ ] `D` handler: return synthetic system info (FPGA serials, versions, sensor size, features)
-- [ ] `V` handler: return/set mock voltages
-- [ ] `R` handler: return mock temperatures + frequencies
-- [ ] `S` handler: cooling enable/disable
-- [ ] `PU` handler: pileup correction toggle
-- [ ] `I` handler: generate synthetic 512×512 image data in the correct binary format
-  - Support all bit depths (1, 4, 6–12)
-  - 1-bit: packed binary (512×64 bytes per frame, `np.unpackbits` compatible)
-  - ≤8-bit: 1 byte per pixel
-  - ≥9-bit: 2 bytes per pixel (little-endian, odd/even interleave)
-  - Append `DONE` sentinel
-- [ ] `G` handler: generate synthetic gated stack (`iterations × gate_steps` frames)
-- [ ] `Ga` handler: accept arbitrary step arrays
-- [ ] `Gf` handler: return computed optimal parameters
-- [ ] `F,c` handler: FLIM IRF calibration (store state, return result)
-- [ ] `F,i` handler: return synthetic FLIM data (CSV lines of pixel values + `DONE`)
-- [ ] `CALIB,0/1/2/3` handlers with correct framing (including breakdown handshake)
-- [ ] `D,<path>` handler: set path
-- [ ] `AE` handler: auto-exposure
-- [ ] Error response for unknown commands
-- [ ] Test helpers: `set_temperature()`, `set_voltage()`, `set_laser_frequency()`, `fail_after_n_commands()`, `set_next_response_delay()`
-- [ ] CLI entry point: `python -m mock_server --port 9999`
+- [x] Implement TCP listener with asyncio (bind `127.0.0.1`, configurable port)
+- [x] Parse incoming ASCII commands and dispatch to handlers
+- [x] `D` handler: return synthetic system info (FPGA serials, versions, sensor size, features)
+- [x] `V` handler: return/set mock voltages
+- [x] `R` handler: return mock temperatures + frequencies
+- [x] `S` handler: cooling enable/disable
+- [x] `PU` handler: pileup correction toggle
+- [x] `I` handler: generate synthetic 512×512 image data in the correct binary format
+  - [x] ≤8-bit: 1 byte per pixel
+  - [x] ≥9-bit: 2 bytes per pixel (little-endian, odd/even interleave)
+  - [x] 1-bit: packed binary (`np.unpackbits` compatible)
+  - [x] Append `DONE` sentinel
+- [x] `G` handler: generate synthetic gated stack (`iterations × gate_steps` frames)
+- [x] `Ga` handler: accept arbitrary step arrays
+- [x] `Gf` handler: return computed optimal parameters
+- [x] `F,c` handler: FLIM IRF calibration (store state, return result)
+- [~] `F,i` handler: returns phasor data for now (CSV-line text format deferred to Phase 5 FLIM work)
+- [x] `CALIB,0/1/2/3` handlers with correct framing (including breakdown handshake)
+- [x] `D,<path>` handler: set path
+- [x] `AE` handler: auto-exposure
+- [x] Error response for unknown commands
+- [x] Test helpers: `set_temperature()`, `set_voltage()`, `set_laser_frequency()`, `fail_after_n_commands()`, `set_next_response_delay()`
+- [x] CLI entry point: `python -m mock_server --port 9999`
 
 ### Files
 
@@ -153,9 +152,9 @@ mock_server/
 
 ### Validation gate
 
-- [ ] `pre_dev_tests/test_14_mock_vendor_server.py` — all 19 tests pass
-- [ ] Can connect with the original `cSPAD.py` client and run `get_info()`, `get_temps()`, `get_intensity()` successfully
-- [ ] Binary data decoded by `cSPAD.get_intensity()` produces a valid numpy array
+- [x] `pre_dev_tests/test_14_mock_vendor_server.py` — all 19 tests pass
+- [x] Can connect with the original `cSPAD.py` client and run `get_info()`, `get_temps()`, `get_intensity()` successfully
+- [x] Binary data decoded by `cSPAD.get_intensity()` produces a valid numpy array (`(512, 512, 1)` uint16)
 
 ---
 
@@ -930,3 +929,5 @@ Phases 4–12 can be parallelized after Phase 3, but the recommended order above
 | 2026-06-27 | Config via `pydantic-settings` with `SPAD_` env prefix | Typed settings, env-overridable for host deployment |
 | 2026-06-27 | Vite dev proxy forwards `/api` + `/ws` to bridge at `127.0.0.1:8080` | SPA dev server talks to bridge without CORS friction |
 | 2026-06-27 | Repo: public GitHub `nirrafa/SPAD512S-remote-gui` | Per user request |
+| 2026-06-27 | Mock = shared pure protocol core + two front-ends (in-process harness, asyncio TCP) | One source of truth exercised by both spec tests and the real cSPAD client |
+| 2026-06-27 | `F,i` returns phasor data only in Phase 1; CSV-line FLIM text format deferred to Phase 5 | test_14 only needs `last_phasor_data`; text decoder belongs with FLIM work |

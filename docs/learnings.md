@@ -36,6 +36,12 @@ The original `cSPAD.py` sends `D` once to get initial info (which may trigger br
 
 A single `R` command returns a comma-separated string: `T_MSTR,T_SLV,T_PCB,T_CHIP,laser_freq,frame_freq`. The first four fields are temperatures, the rest are frequencies. `cSPAD.py` has separate methods (`get_temps`, `get_freq`) that both send `R` — this is wasteful. The bridge should send `R` once and parse both.
 
+### `DONE` framing glues onto the last field of text responses — strip it before parsing
+
+The PRD spec (`test_14`) requires *every* command response to contain a `DONE` sentinel, including text commands like `R`/`V`/`D`. The mock appends `\nDONE` to text responses. `cSPAD.py`'s `get_temps()` survives this only by luck — it slices `split(',')[0:4]` and discards the tail — but `get_freq()` returns `['40000000.0', '100.0\nDONE']`, i.e. the trailing `DONE` is glued to the last frequency. **The bridge's `R`/`V` decoders must strip a trailing `DONE` line before splitting on commas**, otherwise the last numeric field (frame frequency, or `Vex`) will fail to parse. Discovered during Phase 1 mock bring-up.
+
+It is unconfirmed whether the *real* vendor appends `DONE` to text responses; the mock follows the spec, and the bridge decoder is written defensively to strip it if present. Verify against real hardware in Phase 13.
+
 ### Calibration commands use numeric codes
 
 | Code | Calibration type | Requirement |

@@ -6,14 +6,16 @@ They will be wired to real implementations once the code exists.
 """
 import pytest
 
+from mock_server.harness import MockVendorServer
+
 
 @pytest.fixture
 def mock_vendor_server():
-    """A mock TCP server implementing the vendor cSPAD protocol.
-    Must support commands: D, V, R, AE, CALIB, S, I, G, PU, Ga, Gf, F
-    and return synthetic data with DONE/ERROR framing.
+    """A mock implementation of the vendor cSPAD protocol.
+    Supports commands: D, V, R, AE, CALIB, S, I, G, PU, Ga, Gf, F
+    and returns synthetic data with DONE/ERROR framing.
     """
-    raise NotImplementedError("Wire to mock vendor server implementation")
+    return MockVendorServer()
 
 
 @pytest.fixture
