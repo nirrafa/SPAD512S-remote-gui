@@ -18,7 +18,8 @@ Browser (React SPA)  ──HTTP/WS──►  FastAPI bridge  ──TCP──► 
   and visualization.
 
 See [docs/plan.md](docs/plan.md) for the phased implementation plan and
-[docs/PRD.md](docs/PRD.md) for requirements.
+[docs/PRD.md](docs/PRD.md) for requirements. To exercise the bridge yourself with
+no hardware, see [docs/manual-testing.md](docs/manual-testing.md).
 
 ## Development
 
@@ -41,5 +42,5 @@ npm run dev
 
 ## Status
 
-Phase 0 (project setup) — in progress. Track progress in
-[docs/progress.md](docs/progress.md).
+Phases 0–4 complete (mock server, bridge core, intensity + gated modes, first
+browser GUI). Track progress in [docs/progress.md](docs/progress.md).
