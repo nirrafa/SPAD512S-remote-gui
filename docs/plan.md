@@ -188,38 +188,31 @@ mock_server/
 
 ### Tasks
 
-- [ ] Protocol client: async wrapper around `cSPAD.py` logic
-  - Async TCP connect with configurable host/port
-  - Handle welcome banner + breakdown calibration handshake on connect
-  - `send_command(cmd: str) -> str` for text responses
-  - `send_acquire(cmd: str, ...) -> np.ndarray` for binary image data
-  - Auto-reconnect on connection loss with exponential backoff
-  - Connection state observable (connected/disconnected/reconnecting)
-- [ ] Command queue: `asyncio.Queue` with a single consumer task
-  - Accept `CommandRequest` objects (command string, response future)
-  - Reject new commands while an acquisition is running (return busy error)
-  - Allow health-poll commands (`R`, `V`, `S`) to bypass queue when idle
-- [ ] Instrument state manager
-  - States: `idle`, `acquiring`, `calibrating`, `stopping`
-  - Track current operation metadata (mode, params, progress)
-  - Broadcast state changes to all WebSocket clients
-- [ ] WebSocket hub
-  - Client registry (connect/disconnect tracking)
-  - Broadcast methods: `broadcast_state()`, `broadcast_progress()`, `broadcast_preview()`, `broadcast_alarm()`
-  - Per-client message queue to handle slow consumers
-- [ ] REST API skeleton
-  - `GET /api/health` — bridge health
-  - `GET /api/status` — vendor connection + instrument state
-  - `GET /api/system/info` — system info (D command)
-  - `GET /api/system/triggers` — laser/frame frequencies (R command)
-  - `POST /api/acquire/stop` — safe-boundary stop
-  - WebSocket endpoint: `WS /ws`
-- [ ] Configuration via environment variables / config file
-  - `VENDOR_HOST` (default `127.0.0.1`)
-  - `VENDOR_PORT` (default `9999`)
-  - `BRIDGE_HOST` (default `0.0.0.0`)
-  - `BRIDGE_PORT` (default `8080`)
-- [ ] CORS middleware for LAN access (allow all origins on LAN)
+- [x] Protocol client: async wrapper around `cSPAD.py` logic
+  - [x] Async TCP connect with configurable host/port
+  - [x] Handle welcome banner + breakdown calibration handshake on connect (double-D)
+  - [x] `send_command(cmd: str) -> str` for text responses (DONE-stripping)
+  - [x] `send_acquire(cmd: str, ...) -> bytes` for binary image data
+  - [x] Auto-reconnect on connection loss with exponential backoff (fixed-port rebind)
+  - [x] Connection state observable + **passive idle-EOF disconnect detection**
+- [~] Command queue: serialization via the protocol client's asyncio lock + instrument busy guard
+  - [x] Reject new commands while an acquisition is running (busy error)
+  - [ ] Formal `asyncio.Queue` consumer + health-poll bypass — deferred to Phase 3 (`test_13`) / Phase 8
+- [x] Instrument state manager
+  - [x] States: `idle`, `acquiring`, `calibrating`, `stopping`
+  - [ ] Track current operation metadata (mode, params, progress) — Phase 3
+  - [x] Broadcast state changes to all WebSocket clients
+- [x] WebSocket hub
+  - [x] Client registry (connect/disconnect tracking)
+  - [x] Broadcast methods: `broadcast_state/progress/preview/alarm`
+  - [x] Tolerates slow/dead clients (drops on send failure)
+- [x] REST API skeleton
+  - [x] `GET /api/health`, `GET /api/status`
+  - [x] `GET /api/system/info`, `GET /api/system/triggers`
+  - [x] `POST /api/acquire/stop` (minimal; safe-boundary refinement in Phase 9)
+  - [x] `WS /ws`
+- [x] Configuration via environment variables (`SPAD_` prefix; vendor/bridge host+port)
+- [x] CORS middleware for LAN access (allow all origins)
 
 ### Files
 
@@ -250,13 +243,13 @@ bridge/
 
 ### Validation gate
 
-- [ ] Bridge starts, connects to mock server, `GET /api/status` returns `vendor_connected: true`
-- [ ] `GET /api/system/info` returns parsed FPGA serials, versions, features
-- [ ] `GET /api/system/triggers` returns laser/frame frequencies
-- [ ] WebSocket connects, receives state broadcasts
-- [ ] Mock server restart → bridge auto-reconnects
-- [ ] `pre_dev_tests/test_01_connection_and_sysinfo.py` — all 14 tests pass
-- [ ] `pre_dev_tests/test_12_bridge_reliability.py` — reconnect tests pass
+- [x] Bridge starts, connects to mock server, `GET /api/status` returns `vendor_connected: true`
+- [x] `GET /api/system/info` returns parsed FPGA serials, versions, features
+- [x] `GET /api/system/triggers` returns laser/frame frequencies
+- [x] WebSocket connects, receives state broadcasts
+- [x] Mock server restart → bridge auto-reconnects
+- [x] `pre_dev_tests/test_01_connection_and_sysinfo.py` — all 14 tests pass
+- [x] `pre_dev_tests/test_12_bridge_reliability.py` — `TestAutoReconnect` (3 tests) pass
 
 ---
 
@@ -266,28 +259,20 @@ bridge/
 
 ### Tasks
 
-- [ ] Bridge: intensity acquisition endpoint
-  - `POST /api/acquire/intensity` accepting all parameters (bit_depth, integration_time, iterations, roi_width, overlap, pileup_correction, timeout)
-  - Validate parameters against device capabilities (valid bit depths, ROI widths)
-  - Auto-switch integration time units (µs for 1/4-bit, ms for ≥6-bit)
-  - Build and send `PU` + `I` command strings
-  - Decode binary response using the correct path per bit depth
-  - Generate downsampled preview
-  - Broadcast progress + preview over WebSocket
-  - Return result (host_path, preview metadata, sidecar_path)
-- [ ] Bridge: progress tracking for multi-iteration acquisitions
-- [ ] Front-end: intensity mode panel
-  - Parameter form: bit depth dropdown, integration time input, iterations, ROI width, overlap toggle, pileup toggle
-  - "Acquire" button → POST to bridge
-  - Progress bar from WebSocket updates
-  - Display preview image on `<canvas>`
-  - Busy state indicator
-- [ ] Front-end: basic image canvas component
-  - Render 512×512 image
-  - Colormap selector (grayscale, viridis, inferno, plasma)
-  - Auto-stretch intensity scaling
-  - Zoom/pan (mouse wheel + drag)
-- [ ] Basic file saving (PNG folder + JSON sidecar) — details in Phase 10, but minimal version here
+- [x] Bridge: intensity acquisition endpoint
+  - [x] `POST /api/acquire/intensity` accepting all parameters (+ `timeout_s`)
+  - [x] Validate parameters against device capabilities (valid bit depths, ROI widths)
+  - [x] Auto-switch integration time units (µs for 1/4-bit, ms for ≥6-bit) → `integration_time_unit`
+  - [x] Build and send `PU` + `I` command strings
+  - [x] Decode binary response using the correct path per bit depth
+  - [x] Generate downsampled preview
+  - [x] Broadcast busy + preview over WebSocket
+  - [x] Return result (`host_path`, `preview`, `total_frames`, `integration_time_unit`)
+- [~] Bridge: progress tracking — coarse (busy at start, idle/preview at end); per-iteration progress deferred (single `I` command streams all frames) to Phase 9
+- [x] Front-end: intensity mode panel (form, Acquire, progress bar, busy indicator)
+- [x] Front-end: image canvas component (render, colormap grayscale/viridis/inferno/plasma, server-side auto-stretch, wheel-zoom + drag-pan)
+- [x] Basic file saving — minimal `movie_arr.npy` per `acqNNNNN/`; full PNG folder + sidecar in Phase 10
+- [x] **Background acquisition runner** (busy guard, per-op `timeout_s`, result grace) — new; required by `test_13` serialization/timeout semantics
 
 ### Files (new/modified)
 
@@ -319,12 +304,12 @@ frontend/src/
 
 ### Validation gate
 
-- [ ] `pre_dev_tests/test_02_acquisition_intensity.py` — all 11 tests pass
-- [ ] `pre_dev_tests/test_13_concurrency_and_serialization.py` — busy rejection works
-- [ ] Browser: select 8-bit, 100ms, 1 iteration → see preview image on canvas
-- [ ] Browser: acquire while busy → see "instrument busy" message
-- [ ] WebSocket receives progress updates during multi-iteration acquisition
-- [ ] Files saved on host in correct folder structure
+- [x] `pre_dev_tests/test_02_acquisition_intensity.py` — all 11 tests pass
+- [x] `pre_dev_tests/test_13_concurrency_and_serialization.py` — 4/5 (serialization, busy rejection, busy broadcast ×2); `test_health_polling_during_busy` deferred to Phase 8
+- [x] Acquire 8-bit/100ms/1-iter → `done` + 256×256 preview returned (verified e2e via curl; GUI renders it)
+- [x] Acquire while busy → `{"status":"error","message":"instrument busy"}`
+- [~] WebSocket receives busy + preview frames during acquisition (per-iteration progress deferred to Phase 9)
+- [x] Files saved on host: `data/intensity_images/acqNNNNN/movie_arr.npy`, shape `(nframes, 512, 512)` uint16
 
 ---
 
@@ -334,20 +319,15 @@ frontend/src/
 
 ### Tasks
 
-- [ ] Bridge: gated acquisition endpoint `POST /api/acquire/gated`
-  - All gated parameters: bit_depth, integration_time, iterations, gate_steps, gate_step_size, gate_width, gate_offset, gate_direction, gate_trigger_source, overlap, stream, pileup
-  - Arbitrary step array support (Ga command before G)
-  - Decode gated binary data (iterations × gate_steps frames)
-  - Send preview per gate step over WebSocket
-- [ ] Bridge: optimal parameters endpoint `GET /api/acquire/gated/optimal-params`
-  - Wraps Gf command
-  - Returns steps, offset, min_step
-- [ ] Front-end: gated mode panel
-  - All gated parameters in form
-  - "Auto-fill optimal" button
-  - Arbitrary steps input (comma-separated)
-  - Gate step scrubber: slider to browse through gate positions
-- [ ] Extend image canvas to show gated stack (step-by-step browsing)
+- [x] Bridge: gated acquisition endpoint `POST /api/acquire/gated`
+  - [x] All gated parameters (direction `forward/reverse`→0/1, trigger `internal/external`→0/1)
+  - [x] Arbitrary step array support (Ga command before G; gate_steps = len(array))
+  - [x] Decode gated binary data (iterations × gate_steps frames)
+  - [x] Send preview per gate step over WebSocket (`previews_sent` count, index/count in message)
+- [x] Bridge: optimal parameters endpoint `GET /api/acquire/gated/optimal-params` (wraps Gf → steps/offset/min_step)
+- [x] Front-end: gated mode panel (all params, Auto-fill optimal, comma-separated arbitrary steps)
+- [x] Gate step scrubber: slider browses per-step previews (collected from WS, reset each acquire)
+- [x] Mode tabs (Intensity / Gated) in `App.tsx`
 
 ### Files (new/modified)
 
@@ -362,10 +342,10 @@ frontend/src/components/
 
 ### Validation gate
 
-- [ ] `pre_dev_tests/test_03_acquisition_gated.py` — all 12 tests pass
-- [ ] Browser: acquire 20 gate steps → scrub through them on canvas
-- [ ] Optimal params button fills form → acquire succeeds
-- [ ] Arbitrary steps array accepted and produces correct number of frames
+- [x] `pre_dev_tests/test_03_acquisition_gated.py` — all 12 tests pass
+- [x] Browser: acquire 20 gate steps → scrub through them on canvas (slider over WS previews)
+- [x] Optimal params button fills form → acquire succeeds (verified e2e: steps 56/offset 50/min_step 18)
+- [x] Arbitrary steps array accepted and produces correct number of frames (e2e: 6 steps)
 
 ---
 
@@ -931,3 +911,15 @@ Phases 4–12 can be parallelized after Phase 3, but the recommended order above
 | 2026-06-27 | Repo: public GitHub `nirrafa/SPAD512S-remote-gui` | Per user request |
 | 2026-06-27 | Mock = shared pure protocol core + two front-ends (in-process harness, asyncio TCP) | One source of truth exercised by both spec tests and the real cSPAD client |
 | 2026-06-27 | `F,i` returns phasor data only in Phase 1; CSV-line FLIM text format deferred to Phase 5 | test_14 only needs `last_phasor_data`; text decoder belongs with FLIM work |
+| 2026-06-27 | Bridge detects disconnect *passively* via an idle EOF watcher (read(1) between commands) | `/api/status` must report disconnected with no retry and no health poll; the protocol is request/response so an idle read only returns on EOF |
+| 2026-06-27 | Mock TCP server closes active connections on `stop()` and rebinds the **same port** on restart | Needed for the bridge to observe the drop and to reconnect to a stable address |
+| 2026-06-27 | Phase 2 command "queue" = protocol-client asyncio lock + instrument busy guard; formal queue deferred | Lock already serializes; busy-rejection queue + health bypass are driven by `test_13` (Phase 3) and Phase 8 |
+| 2026-06-27 | Added `pytest-timeout` (default 60s, thread method) | A blocked WebSocket/lifespan can hang the suite; per-test timeout surfaces *where* |
+| 2026-06-27 | Fleshed out stub test `test_01::test_bridge_configurable_port` | Spec stub raised `NotImplementedError`; gate requires all 14 — implemented faithfully (connect on a non-9999 port) |
+| 2026-06-28 | Acquisitions run as a **background task** with a result-grace window (`done` if fast, else `running`) | `test_13` rejects a second acquire while busy via *sequential* blocking calls — only possible if the first returns before completing; also yields the `timeout_s` semantics |
+| 2026-06-28 | Mock tiles one frame ×iterations and paces the chunked wire write | Generating N distinct frames blocked the mock loop (teardown timeouts); tiling is O(1) and pacing keeps a large acquisition reliably longer than the grace so busy-rejection is deterministic |
+| 2026-06-28 | Runner owns busy/idle WS broadcasts; instrument state changes are **not** auto-pushed | `test_13` expects the first WS frame after an acquire to be `type:"busy"`; an auto `state` broadcast on the ACQUIRING transition arrived first |
+| 2026-06-28 | Preview = base64 uint8 (≤256², server auto-stretched); colormap applied client-side | Keeps the WS/HTTP payload small (full arrays stay on host per constraints); browser owns grayscale/viridis/inferno/plasma + zoom/pan |
+| 2026-06-28 | `test_13::test_health_polling_during_busy` deferred to Phase 8 | `/api/health/readings` is Phase 8 (Safety & Health); chosen with the user |
+| 2026-06-28 | Gated acquisitions run **synchronously** (request awaits completion) | No gated busy/timeout spec (cf. `test_13` for intensity); awaiting guarantees the response carries `total_gate_steps`/`previews_sent` |
+| 2026-06-28 | Per-gate-step previews broadcast over WS with `index`/`count`; front-end collects + scrubs | Spec requires a preview per gate step; the GUI scrubber reconstructs the stack from these (full arrays stay on host) |

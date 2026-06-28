@@ -12,9 +12,9 @@
 |---|---|---|---|
 | 0 | Project setup & tooling | ✅ Done | gate ✓ |
 | 1 | Mock vendor server | ✅ Done | 19 / 19 |
-| 2 | Bridge core | Not started | 0 / 19 |
-| 3 | Intensity mode (vertical slice) | Not started | 0 / 16 |
-| 4 | Gated time-resolved mode | Not started | 0 / 12 |
+| 2 | Bridge core | ✅ Done | 17 / 19 (test_01 14 + reconnect 3; rest of test_12 is Phase 9) |
+| 3 | Intensity mode (vertical slice) | ✅ Done | 15 / 16 (test_02 11 + test_13 4/5; health-poll → Phase 8) |
+| 4 | Gated time-resolved mode | ✅ Done | 12 / 12 |
 | 5 | FLIM mode | Not started | 0 / 9 |
 | 6 | Raw 1-bit single-photon | Not started | 0 / 5 |
 | 7 | Calibration system | Not started | 0 / 13 |
@@ -60,6 +60,83 @@ Copy this block for each new entry. Most recent session goes on top.
 ---
 
 <!-- Add new entries below this line, most recent first -->
+
+### 2026-06-28 — Phase 4: gated time-resolved mode
+
+**Phase(s):** 4
+**Duration:** ~1.5h
+**Who:** Nir + Claude
+
+#### Done
+- **Backend:** `commands.gated/arbitrary_steps/optimal_gated_params`; `decoder.parse_optimal_gated`; `AcquisitionRunner.run_gated/_gated_op` (synchronous — no busy/timeout spec for gated — with per-gate-step preview broadcasts carrying index/count); `POST /api/acquire/gated` (+ direction/trigger/bit-depth validation) and `GET /api/acquire/gated/optimal-params`. Gated reuses the intensity decode (always 512-wide). `ws_hub.broadcast_preview` extended with index/count.
+- **Front-end:** `GatedPanel` (all params, Auto-fill optimal, comma-separated arbitrary steps), `GateStepSlider` scrubbing per-step previews collected from WS (reset on each `busy`), `GatedPage`, mode tabs (Intensity/Gated) in `App.tsx`.
+- **Gate:** `test_03` 12/12. Default suite + Phases 1–3 gates green (74 spec tests total); ruff + mypy clean; `npm run build/lint/test` green. E2E curl: optimal-params `{56,50,18}`; 20-step acquire → `done` + `total_gate_steps/previews_sent = 20` + saved `gated_images/acqNNNNN/movie_arr.npy`; arbitrary `[0,5,10,20,50,100]` → 6 steps.
+
+#### Decisions made
+- Gated runs synchronously (awaits completion) — no `test_13`-style busy/timeout requirement for gated, so the request returns the full result with counts. Per-step previews are broadcast with `index`/`count` for the scrubber.
+
+#### Bugs / issues encountered
+- mypy: `TypedDict` is not assignable to `dict[str, Any]` (invariance) → typed `broadcast_preview` param as `Mapping[str, Any]`; returned `OptimalGated` from the route instead of `dict(...)`.
+
+#### Blocked on
+- Nothing.
+
+#### Next session
+- Phase 5: FLIM (IRF calibration + acquisition + phasor g/s). `test_04` (9). Adds the CSV-line FLIM text decoder deferred from Phase 1.
+
+### 2026-06-28 — Phase 3: intensity vertical slice + first GUI
+
+**Phase(s):** 3
+**Duration:** ~3h
+**Who:** Nir + Claude
+
+#### Done
+- **Backend:** `decoder.decode_intensity` (3 cSPAD paths) + `integration_time_unit`; `services/preview.py` (≤256² auto-stretched base64 uint8); `services/file_writer.py` (`acqNNNNN/movie_arr.npy`); **`core/acquisition.py` background runner** (busy guard, per-op `timeout_s`, result-grace, busy/preview broadcasts, `ProtocolClient.reset()` for resync on timeout). Rewrote `/api/acquire/intensity` to validate + delegate; flat `broadcast_busy`; dropped the WS initial-state send.
+- Mock: tile one frame ×iterations (cheap) + paced chunked wire write (responsive loop, deterministic busy timing); cancel in-flight handler tasks on stop.
+- **Front-end GUI (first usable UI):** api client/types, `useWebSocket`/`useAcquisition`, `IntensityPanel`, `ImageCanvas` (colormap + zoom/pan), `ProgressBar`, `StatusBanner`, `IntensityPage`, `utils/colormap.ts`. vitest for colormap/base64.
+- **Gate:** `test_02` 11/11; `test_13` 4/5 (serialization, busy rejection, busy broadcast ×2). Default suite + Phase 1/2 gate green; ruff + mypy clean; `npm run build/lint/test` green. E2E curl: acquire → `done` + 256² preview + `(3,512,512)` uint16 `.npy` saved.
+
+#### Decisions made
+- Background runner + result-grace; mock tiling + write pacing; runner-owned busy broadcasts; base64 preview + client colormap; health-poll test deferred to Phase 8. (See plan.md decisions log.)
+
+#### Bugs / issues encountered
+- First WS frame was `state` not `busy` (instrument auto-broadcast on ACQUIRING) → runner now owns busy/idle broadcasts.
+- 1000-iteration acquire blocked the mock loop (teardown timeout) → tile + paced chunked write.
+- `ImageData(rgba, w, h)` rejected `Uint8ClampedArray<ArrayBufferLike>` under strict TS → construct by dims and `.data.set(rgba)`.
+
+#### Blocked on
+- Nothing.
+
+#### Next session
+- Phase 4: gated time-resolved mode (`POST /api/acquire/gated`, arbitrary steps, optimal-params helper, gate-step scrubber). `test_03` (12).
+
+### 2026-06-27 — Phase 2: bridge core
+
+**Phase(s):** 2
+**Duration:** ~2h
+**Who:** Nir + Claude
+
+#### Done
+- **Protocol layer** (`bridge/protocol/`): `client.py` async TCP client (banner + double-D breakdown handshake, `send_command`/`send_acquire`, asyncio-lock serialization, **passive idle-EOF disconnect detection**, auto-reconnect with backoff on a fixed port); `decoder.py` (`strip_done`, `parse_system_info`, `parse_readout`, `bytes_per_frame`); `commands.py` builders.
+- **Core** (`bridge/core/`): `instrument.py` (idle/acquiring/calibrating/stopping + busy guard) and `ws_hub.py` (registry + broadcast_*; drops dead clients).
+- **Routes**: `/api/health`, `/api/status`, `/api/system/info`, `/api/system/triggers`, `/api/acquire/stop`, `/api/acquire/intensity` (connection-guarded minimal acquire), `WS /ws`. Rewrote `main.py` with a lifespan that connects on startup; `create_app(settings)` for port override.
+- Extended the mock: TCP server closes active connections on `stop()`; `MockVendorServer` gained `start()/stop()/port` (same-port rebind) so it serves both the in-process harness (test_14) and bridge integration.
+- Wired `pre_dev_tests` `bridge_client` fixture (HTTP/WS wrapper) and the `mock_vendor_server` TCP lifecycle.
+- **Gate green:** `test_01` 14/14, `test_12::TestAutoReconnect` 3/3. Default `tests/` suite expanded (bridge API + mock TCP regressions) → all pass. ruff + mypy(strict) clean. Added `pytest-timeout` (default 60s).
+
+#### Decisions made
+- Passive idle-EOF disconnect detection; same-port mock rebind; Phase-2 "queue" = lock + busy guard (formal queue deferred to Phase 3/8); fleshed out the `test_bridge_configurable_port` stub. (See plan.md decisions log.)
+
+#### Bugs / issues encountered
+- FastAPI on Py3.11 requires `typing_extensions.TypedDict` (not `typing.TypedDict`) for response models → fixed import.
+- TestClient lifespan hung on teardown when a `/ws` connection was left open, and surfaced a `CancelledError` when the bridge was disconnected at shutdown. Fixed by closing tracked WS handles in the client wrapper and making `protocol.stop()` cancel+await all tasks without `wait_closed`. Recorded in learnings.md.
+- Latent bug: intensity ROI width is arg index 7 (not 8) of the `I` command — corrected in the mock.
+
+#### Blocked on
+- Nothing.
+
+#### Next session
+- Phase 3: intensity vertical slice. Full intensity endpoint (param validation, µs/ms unit switch, decode all bit depths, downsampled preview over WS, file save) + the front-end intensity panel + image canvas. Targets `test_02` (11) and `test_13` concurrency/busy (the formal queue lands here).
 
 ### 2026-06-27 — Phase 1: mock vendor server
 

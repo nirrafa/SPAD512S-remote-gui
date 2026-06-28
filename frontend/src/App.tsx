@@ -1,33 +1,32 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import './App.css'
+import { GatedPage } from './pages/GatedPage'
+import { IntensityPage } from './pages/IntensityPage'
 
-type BridgeHealth = { status: string; version: string }
+type Mode = 'intensity' | 'gated'
 
 function App() {
-  const [health, setHealth] = useState<BridgeHealth | null>(null)
-  const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    fetch('/api/health')
-      .then((res) => res.json() as Promise<BridgeHealth>)
-      .then(setHealth)
-      .catch((err: unknown) => setError(String(err)))
-  }, [])
-
+  const [mode, setMode] = useState<Mode>('intensity')
   return (
-    <main className="app">
-      <h1>SPAD512² Remote Control</h1>
-      <p className="status">
-        Bridge:{' '}
-        {health ? (
-          <span className="ok">connected (v{health.version})</span>
-        ) : error ? (
-          <span className="err">unavailable</span>
-        ) : (
-          <span>checking…</span>
-        )}
-      </p>
-    </main>
+    <>
+      <nav className="tabs">
+        <button
+          type="button"
+          className={mode === 'intensity' ? 'active' : ''}
+          onClick={() => setMode('intensity')}
+        >
+          Intensity
+        </button>
+        <button
+          type="button"
+          className={mode === 'gated' ? 'active' : ''}
+          onClick={() => setMode('gated')}
+        >
+          Gated
+        </button>
+      </nav>
+      {mode === 'intensity' ? <IntensityPage /> : <GatedPage />}
+    </>
   )
 }
 

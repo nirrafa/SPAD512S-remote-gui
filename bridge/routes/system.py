@@ -4,7 +4,7 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException, Request
 
 from bridge.protocol import commands
-from bridge.protocol.client import NotConnectedError, ProtocolClient
+from bridge.protocol.client import NotConnectedError, ProtocolClient, ProtocolError
 from bridge.protocol.decoder import SystemInfo, TriggerInfo, parse_readout
 
 router = APIRouter(prefix="/api/system")
@@ -25,4 +25,6 @@ async def triggers(request: Request) -> TriggerInfo:
         text = await protocol.send_command(commands.readout())
     except NotConnectedError as exc:
         raise HTTPException(status_code=503, detail="vendor disconnected") from exc
+    except ProtocolError as exc:
+        raise HTTPException(status_code=502, detail=f"vendor error: {exc}") from exc
     return parse_readout(text)

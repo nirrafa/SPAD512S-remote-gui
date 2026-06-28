@@ -176,14 +176,16 @@ def _handle_intensity(args: list[str], state: MockState) -> CommandResult:
     iterations = _coerce_int(args[2], 1) if len(args) > 2 else 1
     width = _resolve_width(_coerce_int(args[7], SENSOR_ROWS)) if len(args) > 7 else SENSOR_ROWS
 
-    frames = [
-        synth.intensity_frame(width, bit_depth, state.seed + i) for i in range(iterations)
-    ]
-    wire = synth.encode_intensity_frames(frames, bit_depth, state.pileup_correction)
+    # One representative frame is encoded once and tiled across iterations: the
+    # frame *shape/format* is what consumers verify, and this keeps large
+    # iteration counts cheap (O(1) numpy work, no per-frame allocation).
+    frame = synth.intensity_frame(width, bit_depth, state.seed)
+    one = synth.encode_intensity_frames([frame], bit_depth, state.pileup_correction)
+    wire = one * iterations
     return CommandResult(
         text=f"Intensity acquisition complete ({iterations} frame(s), {bit_depth}-bit)",
         wire_bytes=wire,
-        image=frames[0],
+        image=frame,
     )
 
 

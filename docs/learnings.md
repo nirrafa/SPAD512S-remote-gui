@@ -142,6 +142,16 @@ The vendor protocol has no request IDs or multiplexing. If two commands are sent
 
 The `R`, `V`, `S` commands are read-only, but they still go through the same TCP socket. During an acquisition, the socket is busy streaming binary data. Health polling must wait until the acquisition finishes or use cached values from the last poll.
 
+### Long acquisitions need a background task + result-grace, not a blocking request
+
+A single acquisition endpoint must serve two conflicting needs: return the full result (preview, saved path) for a quick acquire, *and* let a second request be rejected as "busy" while a long one is still running. With a blocking HTTP client these can't both hold if the endpoint awaits completion (the long call blocks the client, so a sequential second call never overlaps). Resolution: run the acquisition as a **background task**, set the busy state synchronously, then await the task for a short *result grace*; if it finishes, return its result, otherwise return `running` and let it complete unattended (pushing the final preview over WebSocket). A per-op timeout uses `max(grace, timeout_s)` so a timeout result is still captured by the awaiting request. The busy check + state-set must have no `await` between them so they're atomic under asyncio's cooperative scheduling.
+
+For deterministic tests, the *mock* must make a large acquisition reliably outlast the grace without blocking its own event loop: generate one frame and tile its bytes ×iterations (O(1) work), then stream the wire payload in chunks with `await drain()` + a small per-chunk sleep. Generating N distinct frames synchronously blocks the loop and makes server shutdown/cancellation hang.
+
+### Event-driven WebSocket state: let one component own a broadcast type
+
+If both an `InstrumentState.on_change` hook and an acquisition runner broadcast on the same transition, clients receive two frames in an order that depends on call sequence (a generic `state` frame arrived before the intended `busy` frame). Have a single owner per semantic event (the runner emits `busy`/idle); don't auto-broadcast low-level state transitions that a higher layer already narrates.
+
 ### Previews must be downsampled before sending to browser
 
 Full 512×512 16-bit images at high frame rates will saturate a LAN WebSocket. Downsample to ~256×256 8-bit for preview. Full data always stays on the host and is downloaded on demand.
@@ -164,7 +174,21 @@ Full 512×512 16-bit images at high frame rates will saturate a LAN WebSocket. D
 
 ## Python / FastAPI
 
-<!-- Add entries as patterns and gotchas are discovered -->
+### Detect a passive TCP disconnect with an idle EOF watcher
+
+For a request/response protocol on a single socket (like cSPAD), you cannot tell the connection dropped until your next send fails — but the UI needs `/api/status` to report disconnected *immediately*, with no polling of the hardware. Solution: between commands, run a background task that does `await reader.read(1)`. Since the peer never sends unsolicited data when idle, this only returns on EOF (`b""`) → mark disconnected. Before sending a command, cancel the watcher; after reading the response, restart it. The command lock guarantees the watcher and a command never read the socket concurrently. See `bridge/protocol/client.py`.
+
+### `typing_extensions.TypedDict`, not `typing.TypedDict`, for FastAPI response models on Python < 3.12
+
+If a route's return type is a `TypedDict` built from `typing.TypedDict`, pydantic v2 raises `PydanticUserError: Please use typing_extensions.TypedDict ... on Python < 3.12` when generating the schema. Import `TypedDict` from `typing_extensions` (already a pydantic dependency).
+
+### Starlette `TestClient` lifespan can hang or raise on teardown
+
+Two failure modes hit during Phase 2, both surfacing as a hung `portal thread.join()` or a `CancelledError` from the lifespan task on `client.__exit__()`:
+1. **An open WebSocket** whose server handler is blocked in `await ws.receive_text()` prevents shutdown. The test/client wrapper must close every WebSocket it opened before exiting the `TestClient`.
+2. **Background `asyncio.create_task` tasks** (e.g. a reconnect loop) left running when the bridge is disconnected at shutdown. The lifespan's shutdown must `cancel()` *and* `await` every such task (suppressing `BaseException`), and avoid `writer.wait_closed()` which can block. Orphaned tasks spawned outside an anyio task group surface as `CancelledError` through the lifespan.
+
+Use `pytest-timeout` (`--timeout=60 --timeout-method=thread`) so a hang produces a traceback pointing at the blocked line instead of stalling the whole suite.
 
 ---
 

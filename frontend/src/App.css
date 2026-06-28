@@ -1,16 +1,162 @@
 .app {
-  max-width: 960px;
+  max-width: 1100px;
   margin: 0 auto;
-  padding: 2rem;
+  padding: 1.5rem;
   font-family: system-ui, sans-serif;
+  color: #e6e6e6;
 }
 
-.status .ok {
-  color: #2e7d32;
-  font-weight: 600;
+header h1 {
+  margin: 0 0 0.5rem;
+  font-size: 1.4rem;
 }
 
-.status .err {
-  color: #c62828;
-  font-weight: 600;
+.status-banner {
+  display: flex;
+  gap: 1rem;
+  font-size: 0.85rem;
+  margin-bottom: 1rem;
+}
+.status-banner .ok {
+  color: #4caf50;
+}
+.status-banner .err {
+  color: #e57373;
+}
+.status-banner .busy {
+  color: #ffb74d;
+}
+.status-banner .idle {
+  color: #90caf9;
+}
+
+.layout {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  gap: 1.5rem;
+  align-items: start;
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  background: #1b1b1b;
+  padding: 1rem;
+  border-radius: 8px;
+}
+.panel h2 {
+  margin: 0;
+  font-size: 1rem;
+}
+.panel label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.85rem;
+}
+.panel label.checkbox {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.5rem;
+}
+.panel input,
+.panel select,
+.viewer-toolbar select {
+  background: #2a2a2a;
+  color: #e6e6e6;
+  border: 1px solid #3a3a3a;
+  border-radius: 4px;
+  padding: 0.35rem;
+}
+.panel button {
+  margin-top: 0.5rem;
+  padding: 0.5rem;
+  background: #1976d2;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.panel button:disabled {
+  background: #555;
+  cursor: not-allowed;
+}
+
+.viewer-toolbar {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  margin-bottom: 0.5rem;
+  font-size: 0.85rem;
+}
+.viewer-toolbar label {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+}
+
+.image-canvas canvas {
+  background: #111;
+  border: 1px solid #333;
+  border-radius: 6px;
+  cursor: grab;
+}
+.canvas-controls {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  margin-top: 0.4rem;
+  font-size: 0.8rem;
+}
+
+.progress {
+  height: 6px;
+  background: #2a2a2a;
+  border-radius: 3px;
+  overflow: hidden;
+  margin-bottom: 0.5rem;
+}
+.progress-fill {
+  height: 100%;
+  background: #1976d2;
+  transition: width 0.2s;
+}
+
+.muted {
+  color: #888;
+}
+
+.tabs {
+  display: flex;
+  gap: 0.5rem;
+  max-width: 1100px;
+  margin: 1rem auto 0;
+  padding: 0 1.5rem;
+}
+.tabs button {
+  background: #1b1b1b;
+  color: #aaa;
+  border: 1px solid #333;
+  border-bottom: none;
+  border-radius: 6px 6px 0 0;
+  padding: 0.5rem 1rem;
+  cursor: pointer;
+}
+.tabs button.active {
+  background: #2a2a2a;
+  color: #fff;
+}
+
+.gate-slider {
+  margin: 0.5rem 0;
+}
+.gate-slider label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-size: 0.85rem;
+}
+.gate-slider input[type='range'] {
+  width: 100%;
 }
