@@ -5,7 +5,13 @@ import App from './App'
 beforeEach(() => {
   vi.stubGlobal(
     'fetch',
-    vi.fn(() => Promise.resolve({ json: () => Promise.resolve({ status: 'ok', version: '0.1.0' }) })),
+    vi.fn((input: string) => {
+      const body =
+        typeof input === 'string' && input.includes('/system/info')
+          ? { sensor_size: 512, valid_bit_depths: [8], valid_roi_widths: [512], enabled_features: {} }
+          : { vendor_connected: true, instrument_state: 'idle' }
+      return Promise.resolve({ ok: true, json: () => Promise.resolve(body) })
+    }),
   )
 })
 

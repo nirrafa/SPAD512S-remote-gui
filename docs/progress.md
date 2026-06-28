@@ -13,7 +13,7 @@
 | 0 | Project setup & tooling | ✅ Done | gate ✓ |
 | 1 | Mock vendor server | ✅ Done | 19 / 19 |
 | 2 | Bridge core | ✅ Done | 17 / 19 (test_01 14 + reconnect 3; rest of test_12 is Phase 9) |
-| 3 | Intensity mode (vertical slice) | Not started | 0 / 16 |
+| 3 | Intensity mode (vertical slice) | ✅ Done | 15 / 16 (test_02 11 + test_13 4/5; health-poll → Phase 8) |
 | 4 | Gated time-resolved mode | Not started | 0 / 12 |
 | 5 | FLIM mode | Not started | 0 / 9 |
 | 6 | Raw 1-bit single-photon | Not started | 0 / 5 |
@@ -60,6 +60,32 @@ Copy this block for each new entry. Most recent session goes on top.
 ---
 
 <!-- Add new entries below this line, most recent first -->
+
+### 2026-06-28 — Phase 3: intensity vertical slice + first GUI
+
+**Phase(s):** 3
+**Duration:** ~3h
+**Who:** Nir + Claude
+
+#### Done
+- **Backend:** `decoder.decode_intensity` (3 cSPAD paths) + `integration_time_unit`; `services/preview.py` (≤256² auto-stretched base64 uint8); `services/file_writer.py` (`acqNNNNN/movie_arr.npy`); **`core/acquisition.py` background runner** (busy guard, per-op `timeout_s`, result-grace, busy/preview broadcasts, `ProtocolClient.reset()` for resync on timeout). Rewrote `/api/acquire/intensity` to validate + delegate; flat `broadcast_busy`; dropped the WS initial-state send.
+- Mock: tile one frame ×iterations (cheap) + paced chunked wire write (responsive loop, deterministic busy timing); cancel in-flight handler tasks on stop.
+- **Front-end GUI (first usable UI):** api client/types, `useWebSocket`/`useAcquisition`, `IntensityPanel`, `ImageCanvas` (colormap + zoom/pan), `ProgressBar`, `StatusBanner`, `IntensityPage`, `utils/colormap.ts`. vitest for colormap/base64.
+- **Gate:** `test_02` 11/11; `test_13` 4/5 (serialization, busy rejection, busy broadcast ×2). Default suite + Phase 1/2 gate green; ruff + mypy clean; `npm run build/lint/test` green. E2E curl: acquire → `done` + 256² preview + `(3,512,512)` uint16 `.npy` saved.
+
+#### Decisions made
+- Background runner + result-grace; mock tiling + write pacing; runner-owned busy broadcasts; base64 preview + client colormap; health-poll test deferred to Phase 8. (See plan.md decisions log.)
+
+#### Bugs / issues encountered
+- First WS frame was `state` not `busy` (instrument auto-broadcast on ACQUIRING) → runner now owns busy/idle broadcasts.
+- 1000-iteration acquire blocked the mock loop (teardown timeout) → tile + paced chunked write.
+- `ImageData(rgba, w, h)` rejected `Uint8ClampedArray<ArrayBufferLike>` under strict TS → construct by dims and `.data.set(rgba)`.
+
+#### Blocked on
+- Nothing.
+
+#### Next session
+- Phase 4: gated time-resolved mode (`POST /api/acquire/gated`, arbitrary steps, optimal-params helper, gate-step scrubber). `test_03` (12).
 
 ### 2026-06-27 — Phase 2: bridge core
 

@@ -259,28 +259,20 @@ bridge/
 
 ### Tasks
 
-- [ ] Bridge: intensity acquisition endpoint
-  - `POST /api/acquire/intensity` accepting all parameters (bit_depth, integration_time, iterations, roi_width, overlap, pileup_correction, timeout)
-  - Validate parameters against device capabilities (valid bit depths, ROI widths)
-  - Auto-switch integration time units (µs for 1/4-bit, ms for ≥6-bit)
-  - Build and send `PU` + `I` command strings
-  - Decode binary response using the correct path per bit depth
-  - Generate downsampled preview
-  - Broadcast progress + preview over WebSocket
-  - Return result (host_path, preview metadata, sidecar_path)
-- [ ] Bridge: progress tracking for multi-iteration acquisitions
-- [ ] Front-end: intensity mode panel
-  - Parameter form: bit depth dropdown, integration time input, iterations, ROI width, overlap toggle, pileup toggle
-  - "Acquire" button → POST to bridge
-  - Progress bar from WebSocket updates
-  - Display preview image on `<canvas>`
-  - Busy state indicator
-- [ ] Front-end: basic image canvas component
-  - Render 512×512 image
-  - Colormap selector (grayscale, viridis, inferno, plasma)
-  - Auto-stretch intensity scaling
-  - Zoom/pan (mouse wheel + drag)
-- [ ] Basic file saving (PNG folder + JSON sidecar) — details in Phase 10, but minimal version here
+- [x] Bridge: intensity acquisition endpoint
+  - [x] `POST /api/acquire/intensity` accepting all parameters (+ `timeout_s`)
+  - [x] Validate parameters against device capabilities (valid bit depths, ROI widths)
+  - [x] Auto-switch integration time units (µs for 1/4-bit, ms for ≥6-bit) → `integration_time_unit`
+  - [x] Build and send `PU` + `I` command strings
+  - [x] Decode binary response using the correct path per bit depth
+  - [x] Generate downsampled preview
+  - [x] Broadcast busy + preview over WebSocket
+  - [x] Return result (`host_path`, `preview`, `total_frames`, `integration_time_unit`)
+- [~] Bridge: progress tracking — coarse (busy at start, idle/preview at end); per-iteration progress deferred (single `I` command streams all frames) to Phase 9
+- [x] Front-end: intensity mode panel (form, Acquire, progress bar, busy indicator)
+- [x] Front-end: image canvas component (render, colormap grayscale/viridis/inferno/plasma, server-side auto-stretch, wheel-zoom + drag-pan)
+- [x] Basic file saving — minimal `movie_arr.npy` per `acqNNNNN/`; full PNG folder + sidecar in Phase 10
+- [x] **Background acquisition runner** (busy guard, per-op `timeout_s`, result grace) — new; required by `test_13` serialization/timeout semantics
 
 ### Files (new/modified)
 
@@ -312,12 +304,12 @@ frontend/src/
 
 ### Validation gate
 
-- [ ] `pre_dev_tests/test_02_acquisition_intensity.py` — all 11 tests pass
-- [ ] `pre_dev_tests/test_13_concurrency_and_serialization.py` — busy rejection works
-- [ ] Browser: select 8-bit, 100ms, 1 iteration → see preview image on canvas
-- [ ] Browser: acquire while busy → see "instrument busy" message
-- [ ] WebSocket receives progress updates during multi-iteration acquisition
-- [ ] Files saved on host in correct folder structure
+- [x] `pre_dev_tests/test_02_acquisition_intensity.py` — all 11 tests pass
+- [x] `pre_dev_tests/test_13_concurrency_and_serialization.py` — 4/5 (serialization, busy rejection, busy broadcast ×2); `test_health_polling_during_busy` deferred to Phase 8
+- [x] Acquire 8-bit/100ms/1-iter → `done` + 256×256 preview returned (verified e2e via curl; GUI renders it)
+- [x] Acquire while busy → `{"status":"error","message":"instrument busy"}`
+- [~] WebSocket receives busy + preview frames during acquisition (per-iteration progress deferred to Phase 9)
+- [x] Files saved on host: `data/intensity_images/acqNNNNN/movie_arr.npy`, shape `(nframes, 512, 512)` uint16
 
 ---
 
@@ -929,3 +921,8 @@ Phases 4–12 can be parallelized after Phase 3, but the recommended order above
 | 2026-06-27 | Phase 2 command "queue" = protocol-client asyncio lock + instrument busy guard; formal queue deferred | Lock already serializes; busy-rejection queue + health bypass are driven by `test_13` (Phase 3) and Phase 8 |
 | 2026-06-27 | Added `pytest-timeout` (default 60s, thread method) | A blocked WebSocket/lifespan can hang the suite; per-test timeout surfaces *where* |
 | 2026-06-27 | Fleshed out stub test `test_01::test_bridge_configurable_port` | Spec stub raised `NotImplementedError`; gate requires all 14 — implemented faithfully (connect on a non-9999 port) |
+| 2026-06-28 | Acquisitions run as a **background task** with a result-grace window (`done` if fast, else `running`) | `test_13` rejects a second acquire while busy via *sequential* blocking calls — only possible if the first returns before completing; also yields the `timeout_s` semantics |
+| 2026-06-28 | Mock tiles one frame ×iterations and paces the chunked wire write | Generating N distinct frames blocked the mock loop (teardown timeouts); tiling is O(1) and pacing keeps a large acquisition reliably longer than the grace so busy-rejection is deterministic |
+| 2026-06-28 | Runner owns busy/idle WS broadcasts; instrument state changes are **not** auto-pushed | `test_13` expects the first WS frame after an acquire to be `type:"busy"`; an auto `state` broadcast on the ACQUIRING transition arrived first |
+| 2026-06-28 | Preview = base64 uint8 (≤256², server auto-stretched); colormap applied client-side | Keeps the WS/HTTP payload small (full arrays stay on host per constraints); browser owns grayscale/viridis/inferno/plasma + zoom/pan |
+| 2026-06-28 | `test_13::test_health_polling_during_busy` deferred to Phase 8 | `/api/health/readings` is Phase 8 (Safety & Health); chosen with the user |

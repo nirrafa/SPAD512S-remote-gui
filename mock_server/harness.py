@@ -92,7 +92,7 @@ class MockVendorServer:
         if self._thread is None or self._loop is None or self._tcp is None:
             return
         loop, tcp = self._loop, self._tcp
-        asyncio.run_coroutine_threadsafe(tcp.stop(), loop).result(5)
+        asyncio.run_coroutine_threadsafe(tcp.stop(), loop).result(10)
         loop.call_soon_threadsafe(loop.stop)
         self._thread.join(5)
         self._thread = None

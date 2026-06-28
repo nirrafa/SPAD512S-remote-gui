@@ -144,6 +144,14 @@ class ProtocolClient:
         await self._set_connected(False)
         await self._teardown()
 
+    async def reset(self) -> None:
+        """Force-drop the connection so ``_maintain`` reconnects.
+
+        Used after a command times out mid-flight: the socket has a pending
+        response, so the stream is desynced and must be re-established.
+        """
+        await self._handle_disconnect()
+
     async def _set_connected(self, value: bool) -> None:
         self._connected = value
         if self._on_state_change is not None:

@@ -20,6 +20,10 @@ class _WebSocketHandle:
         self._ws = context_manager.__enter__()
         self.connected = True
 
+    def receive(self, timeout=None):
+        # TestClient websockets block until a frame; pytest-timeout guards hangs.
+        return self._ws.receive_json()
+
     def close(self):
         if self.connected:
             self._cm.__exit__(None, None, None)

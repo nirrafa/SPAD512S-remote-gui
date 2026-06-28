@@ -142,6 +142,16 @@ The vendor protocol has no request IDs or multiplexing. If two commands are sent
 
 The `R`, `V`, `S` commands are read-only, but they still go through the same TCP socket. During an acquisition, the socket is busy streaming binary data. Health polling must wait until the acquisition finishes or use cached values from the last poll.
 
+### Long acquisitions need a background task + result-grace, not a blocking request
+
+A single acquisition endpoint must serve two conflicting needs: return the full result (preview, saved path) for a quick acquire, *and* let a second request be rejected as "busy" while a long one is still running. With a blocking HTTP client these can't both hold if the endpoint awaits completion (the long call blocks the client, so a sequential second call never overlaps). Resolution: run the acquisition as a **background task**, set the busy state synchronously, then await the task for a short *result grace*; if it finishes, return its result, otherwise return `running` and let it complete unattended (pushing the final preview over WebSocket). A per-op timeout uses `max(grace, timeout_s)` so a timeout result is still captured by the awaiting request. The busy check + state-set must have no `await` between them so they're atomic under asyncio's cooperative scheduling.
+
+For deterministic tests, the *mock* must make a large acquisition reliably outlast the grace without blocking its own event loop: generate one frame and tile its bytes ×iterations (O(1) work), then stream the wire payload in chunks with `await drain()` + a small per-chunk sleep. Generating N distinct frames synchronously blocks the loop and makes server shutdown/cancellation hang.
+
+### Event-driven WebSocket state: let one component own a broadcast type
+
+If both an `InstrumentState.on_change` hook and an acquisition runner broadcast on the same transition, clients receive two frames in an order that depends on call sequence (a generic `state` frame arrived before the intended `busy` frame). Have a single owner per semantic event (the runner emits `busy`/idle); don't auto-broadcast low-level state transitions that a higher layer already narrates.
+
 ### Previews must be downsampled before sending to browser
 
 Full 512×512 16-bit images at high frame rates will saturate a LAN WebSocket. Downsample to ~256×256 8-bit for preview. Full data always stays on the host and is downloaded on demand.

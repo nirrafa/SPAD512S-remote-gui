@@ -9,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from bridge import __version__
 from bridge.config import Settings, get_settings
+from bridge.core.acquisition import AcquisitionRunner
 from bridge.core.instrument import InstrumentState
 from bridge.core.ws_hub import WebSocketHub
 from bridge.protocol.client import ProtocolClient
@@ -20,13 +21,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings: Settings = app.state.settings
     hub = WebSocketHub()
 
-    async def on_state_change(instrument: InstrumentState) -> None:
-        await hub.broadcast_state(instrument.snapshot())
-
     async def on_connection_change(connected: bool) -> None:
         await hub.broadcast_state({"vendor_connected": connected})
 
-    instrument = InstrumentState(on_change=on_state_change)
+    # The acquisition runner owns busy/idle broadcasts (so the first frame a
+    # client sees after an acquire is `busy`); state changes are not auto-pushed.
+    instrument = InstrumentState()
     protocol = ProtocolClient(
         settings.vendor_host,
         settings.vendor_port,
@@ -38,6 +38,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.protocol = protocol
 
     await protocol.start()
+    sensor_size = protocol.system_info["sensor_size"] if protocol.system_info else 512
+    app.state.runner = AcquisitionRunner(
+        protocol, instrument, hub, settings.data_root, sensor_size=sensor_size
+    )
     try:
         yield
     finally:

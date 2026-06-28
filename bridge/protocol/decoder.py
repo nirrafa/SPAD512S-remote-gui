@@ -6,6 +6,7 @@ Binary acquisition data is handled by :mod:`bridge.protocol.client`.
 """
 from __future__ import annotations
 
+import numpy as np
 from typing_extensions import TypedDict
 
 INT_BIT_DEPTHS: list[int] = [1, 4, 6, 7, 8, 9, 10, 11, 12]
@@ -96,6 +97,11 @@ def parse_readout(text: str, *, expected_laser_hz: float | None = None) -> Trigg
     )
 
 
+def integration_time_unit(bit_depth: int) -> str:
+    """1/4-bit acquisitions take integration time in µs; ≥6-bit in ms."""
+    return "us" if bit_depth in (1, 4) else "ms"
+
+
 def bytes_per_frame(bit_depth: int, rows: int, im_width: int, pileup: bool) -> int:
     """Wire size of one intensity frame, matching the cSPAD decode paths."""
     if bit_depth == 1:
@@ -103,6 +109,42 @@ def bytes_per_frame(bit_depth: int, rows: int, im_width: int, pileup: bool) -> i
     if bit_depth < 9 and not pileup:
         return rows * im_width
     return rows * im_width * 2
+
+
+def decode_intensity(
+    data: bytes,
+    *,
+    bit_depth: int,
+    rows: int,
+    im_width: int,
+    iterations: int,
+    pileup: bool,
+) -> np.ndarray:
+    """Decode raw intensity bytes into a ``(iterations, rows, width)`` uint16 stack.
+
+    Mirrors the three cSPAD decode paths (1-bit packed; ≤8-bit one byte/px;
+    ≥9-bit or pileup two bytes little-endian). 1-bit frames are ``rows × rows``.
+    """
+    if bit_depth == 1:
+        per = rows * rows // 8
+        frames = np.empty((iterations, rows, rows), dtype=np.uint16)
+        for i in range(iterations):
+            chunk = np.frombuffer(data[i * per : (i + 1) * per], dtype=np.uint8)
+            bits = np.unpackbits(chunk).reshape((rows, rows))
+            frames[i] = np.rot90(bits).astype(np.uint16)
+        return frames
+
+    if bit_depth < 9 and not pileup:
+        per = rows * im_width
+        flat = np.frombuffer(data[: iterations * per], dtype=np.uint8).astype(np.uint16)
+        return flat.reshape((iterations, rows, im_width))
+
+    per = rows * im_width * 2
+    out = np.empty((iterations, rows, im_width), dtype=np.uint16)
+    for i in range(iterations):
+        frame = np.frombuffer(data[i * per : (i + 1) * per], dtype="<u2")
+        out[i] = frame.reshape((rows, im_width))
+    return out
 
 
 def parse_temperatures(text: str) -> dict[str, float]:

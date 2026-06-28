@@ -12,6 +12,8 @@ from mock_server.state import MockState
 
 BANNER = b"SPAD512S MockVendor 1.0\n"
 _READ_SIZE = 8192
+_WRITE_CHUNK = 1 << 20  # 1 MiB
+_CHUNK_PACE_S = 0.003  # per-chunk pacing so multi-frame transfers take realistic time
 
 
 class MockVendorTCPServer:
@@ -22,10 +24,14 @@ class MockVendorTCPServer:
         self.state = state or MockState()
         self._server: asyncio.Server | None = None
         self._clients: set[asyncio.StreamWriter] = set()
+        self._tasks: set[asyncio.Task[None]] = set()
 
     async def _handle_client(
         self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter
     ) -> None:
+        task = asyncio.current_task()
+        if task is not None:
+            self._tasks.add(task)
         writer.write(BANNER)
         await writer.drain()
         self._clients.add(writer)
@@ -42,7 +48,16 @@ class MockVendorTCPServer:
 
                 result = handle(command, self.state)
                 if result.wire_bytes is not None:
-                    writer.write(result.wire_bytes + b"DONE")
+                    # Stream large payloads in chunks with drain between, so the
+                    # event loop stays responsive (a multi-frame acquisition does
+                    # not block stop()/cancellation).
+                    payload = result.wire_bytes
+                    for offset in range(0, len(payload), _WRITE_CHUNK):
+                        writer.write(payload[offset : offset + _WRITE_CHUNK])
+                        await writer.drain()
+                        if len(payload) > _WRITE_CHUNK:
+                            await asyncio.sleep(_CHUNK_PACE_S)  # simulate transfer time
+                    writer.write(b"DONE")
                 else:
                     # Errors also terminate with DONE (text carries "ERROR")
                     # so read-until-DONE consumers never hang; see decoder.py.
@@ -52,6 +67,8 @@ class MockVendorTCPServer:
             pass
         finally:
             self._clients.discard(writer)
+            if task is not None:
+                self._tasks.discard(task)
             writer.close()
 
     async def start(self) -> None:
@@ -74,6 +91,9 @@ class MockVendorTCPServer:
         return int(self._server.sockets[0].getsockname()[1])
 
     async def stop(self) -> None:
+        for task in list(self._tasks):
+            task.cancel()
+        self._tasks.clear()
         for writer in list(self._clients):
             writer.close()
         self._clients.clear()

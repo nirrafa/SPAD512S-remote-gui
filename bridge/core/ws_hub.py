@@ -38,6 +38,9 @@ class WebSocketHub:
     async def broadcast_state(self, payload: dict[str, Any]) -> None:
         await self.broadcast({"type": "state", "data": payload})
 
+    async def broadcast_busy(self, *, mode: str, progress: float) -> None:
+        await self.broadcast({"type": "busy", "mode": mode, "progress": progress})
+
     async def broadcast_progress(self, payload: dict[str, Any]) -> None:
         await self.broadcast({"type": "progress", "data": payload})
 
