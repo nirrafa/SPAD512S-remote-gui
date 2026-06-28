@@ -5,6 +5,7 @@ per-client send failures and drops disconnected clients.
 """
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any
 
 from fastapi import WebSocket
@@ -44,8 +45,15 @@ class WebSocketHub:
     async def broadcast_progress(self, payload: dict[str, Any]) -> None:
         await self.broadcast({"type": "progress", "data": payload})
 
-    async def broadcast_preview(self, payload: dict[str, Any]) -> None:
-        await self.broadcast({"type": "preview", "data": payload})
+    async def broadcast_preview(
+        self, payload: Mapping[str, Any], *, index: int | None = None, count: int | None = None
+    ) -> None:
+        message: dict[str, Any] = {"type": "preview", "data": payload}
+        if index is not None:
+            message["index"] = index
+        if count is not None:
+            message["count"] = count
+        await self.broadcast(message)
 
     async def broadcast_alarm(self, payload: dict[str, Any]) -> None:
         await self.broadcast({"type": "alarm", "data": payload})

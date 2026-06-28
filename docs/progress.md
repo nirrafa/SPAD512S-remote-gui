@@ -14,7 +14,7 @@
 | 1 | Mock vendor server | ✅ Done | 19 / 19 |
 | 2 | Bridge core | ✅ Done | 17 / 19 (test_01 14 + reconnect 3; rest of test_12 is Phase 9) |
 | 3 | Intensity mode (vertical slice) | ✅ Done | 15 / 16 (test_02 11 + test_13 4/5; health-poll → Phase 8) |
-| 4 | Gated time-resolved mode | Not started | 0 / 12 |
+| 4 | Gated time-resolved mode | ✅ Done | 12 / 12 |
 | 5 | FLIM mode | Not started | 0 / 9 |
 | 6 | Raw 1-bit single-photon | Not started | 0 / 5 |
 | 7 | Calibration system | Not started | 0 / 13 |
@@ -60,6 +60,29 @@ Copy this block for each new entry. Most recent session goes on top.
 ---
 
 <!-- Add new entries below this line, most recent first -->
+
+### 2026-06-28 — Phase 4: gated time-resolved mode
+
+**Phase(s):** 4
+**Duration:** ~1.5h
+**Who:** Nir + Claude
+
+#### Done
+- **Backend:** `commands.gated/arbitrary_steps/optimal_gated_params`; `decoder.parse_optimal_gated`; `AcquisitionRunner.run_gated/_gated_op` (synchronous — no busy/timeout spec for gated — with per-gate-step preview broadcasts carrying index/count); `POST /api/acquire/gated` (+ direction/trigger/bit-depth validation) and `GET /api/acquire/gated/optimal-params`. Gated reuses the intensity decode (always 512-wide). `ws_hub.broadcast_preview` extended with index/count.
+- **Front-end:** `GatedPanel` (all params, Auto-fill optimal, comma-separated arbitrary steps), `GateStepSlider` scrubbing per-step previews collected from WS (reset on each `busy`), `GatedPage`, mode tabs (Intensity/Gated) in `App.tsx`.
+- **Gate:** `test_03` 12/12. Default suite + Phases 1–3 gates green (74 spec tests total); ruff + mypy clean; `npm run build/lint/test` green. E2E curl: optimal-params `{56,50,18}`; 20-step acquire → `done` + `total_gate_steps/previews_sent = 20` + saved `gated_images/acqNNNNN/movie_arr.npy`; arbitrary `[0,5,10,20,50,100]` → 6 steps.
+
+#### Decisions made
+- Gated runs synchronously (awaits completion) — no `test_13`-style busy/timeout requirement for gated, so the request returns the full result with counts. Per-step previews are broadcast with `index`/`count` for the scrubber.
+
+#### Bugs / issues encountered
+- mypy: `TypedDict` is not assignable to `dict[str, Any]` (invariance) → typed `broadcast_preview` param as `Mapping[str, Any]`; returned `OptimalGated` from the route instead of `dict(...)`.
+
+#### Blocked on
+- Nothing.
+
+#### Next session
+- Phase 5: FLIM (IRF calibration + acquisition + phasor g/s). `test_04` (9). Adds the CSV-line FLIM text decoder deferred from Phase 1.
 
 ### 2026-06-28 — Phase 3: intensity vertical slice + first GUI
 

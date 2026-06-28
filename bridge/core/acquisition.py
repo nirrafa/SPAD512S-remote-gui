@@ -51,6 +51,45 @@ class IntensityParams:
         self.timeout_s = timeout_s
 
 
+class GatedParams:
+    def __init__(
+        self,
+        *,
+        bit_depth: int,
+        integration_time: float,
+        iterations: int,
+        gate_steps: int,
+        gate_step_size: float,
+        gate_offset: int,
+        gate_width: int,
+        gate_direction: str,
+        gate_trigger_source: str,
+        overlap: bool,
+        stream: bool,
+        pileup_correction: bool,
+        arbitrary_steps: list[float] | None,
+    ) -> None:
+        self.bit_depth = bit_depth
+        self.integration_time = integration_time
+        self.iterations = iterations
+        self.gate_steps = gate_steps
+        self.gate_step_size = gate_step_size
+        self.gate_offset = gate_offset
+        self.gate_width = gate_width
+        self.gate_direction = gate_direction
+        self.gate_trigger_source = gate_trigger_source
+        self.overlap = overlap
+        self.stream = stream
+        self.pileup_correction = pileup_correction
+        self.arbitrary_steps = arbitrary_steps
+
+    @property
+    def effective_steps(self) -> int:
+        if self.arbitrary_steps:
+            return len(self.arbitrary_steps)
+        return self.gate_steps
+
+
 class AcquisitionRunner:
     def __init__(
         self,
@@ -152,6 +191,85 @@ class AcquisitionRunner:
             "preview": preview,
             "host_path": host_path,
             "total_frames": params.iterations,
+            "integration_time_unit": unit,
+            "bytes": len(data),
+        }
+
+    # --- Gated ----------------------------------------------------------------
+
+    async def run_gated(self, params: GatedParams) -> dict[str, Any]:
+        """Run a gated acquisition synchronously (no busy/timeout spec to honor,
+        so the request awaits completion and always returns its full result)."""
+        if self._instrument.is_busy:
+            return {"status": "error", "message": "instrument busy"}
+
+        await self._instrument.set(InstrumentStatus.ACQUIRING)
+        await self._hub.broadcast_busy(mode="gated", progress=0.0)
+        try:
+            return await self._gated_op(params)
+        except NotConnectedError:
+            return {"status": "error", "message": "vendor disconnected"}
+        except ProtocolError as exc:
+            return {"status": "error", "message": str(exc)}
+        finally:
+            await self._instrument.set(InstrumentStatus.IDLE)
+            await self._hub.broadcast_state(self._instrument.snapshot())
+
+    async def _gated_op(self, params: GatedParams) -> dict[str, Any]:
+        rows = self._sensor_size
+        gate_steps = params.effective_steps
+        n_frames = params.iterations * gate_steps
+        expected = n_frames * bytes_per_frame(
+            params.bit_depth, rows, rows, params.pileup_correction
+        )
+        unit = integration_time_unit(params.bit_depth)
+        command = commands.gated(
+            bit_depth=params.bit_depth,
+            integration_time=params.integration_time,
+            iterations=params.iterations,
+            gate_steps=gate_steps,
+            gate_step_size=params.gate_step_size,
+            gate_offset=params.gate_offset,
+            gate_width=params.gate_width,
+            gate_direction=params.gate_direction,
+            gate_trigger_source=params.gate_trigger_source,
+            overlap=params.overlap,
+            stream=params.stream,
+            arbitrary=bool(params.arbitrary_steps),
+        )
+
+        await self._protocol.send_command(commands.pileup(params.pileup_correction))
+        if params.arbitrary_steps:
+            await self._protocol.send_command(commands.arbitrary_steps(params.arbitrary_steps))
+        data = await self._protocol.send_acquire(command, expected_bytes=expected)
+
+        stack = await asyncio.to_thread(
+            decode_intensity,
+            data,
+            bit_depth=params.bit_depth,
+            rows=rows,
+            im_width=rows,
+            iterations=n_frames,
+            pileup=params.pileup_correction,
+        )
+
+        previews_sent = 0
+        for step in range(gate_steps):
+            await self._hub.broadcast_preview(
+                make_preview(stack[step]), index=step, count=gate_steps
+            )
+            previews_sent += 1
+
+        host_path = await asyncio.to_thread(
+            save_stack, stack, data_root=self._data_root, mode="gated"
+        )
+        return {
+            "status": "done",
+            "preview": make_preview(stack[0]),
+            "host_path": host_path,
+            "total_gate_steps": gate_steps,
+            "previews_sent": previews_sent,
+            "total_frames": n_frames,
             "integration_time_unit": unit,
             "bytes": len(data),
         }

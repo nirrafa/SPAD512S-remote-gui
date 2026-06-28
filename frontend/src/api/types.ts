@@ -39,9 +39,33 @@ export interface AcquireResult {
   preview?: Preview
   host_path?: string
   total_frames?: number
+  total_gate_steps?: number
+  previews_sent?: number
   integration_time_unit?: string
   bytes?: number
   mode?: string
+}
+
+export interface GatedParams {
+  bit_depth: number
+  integration_time_ms: number
+  iterations: number
+  gate_steps: number
+  gate_step_size_ps: number
+  gate_width: number
+  gate_offset: number
+  gate_direction: 'forward' | 'reverse'
+  gate_trigger_source: 'internal' | 'external'
+  overlap: boolean
+  stream: boolean
+  pileup_correction: boolean
+  arbitrary_steps?: number[]
+}
+
+export interface OptimalParams {
+  steps: number
+  offset: number
+  min_step: number
 }
 
 export type WsMessage =

@@ -6,6 +6,8 @@ Binary acquisition data is handled by :mod:`bridge.protocol.client`.
 """
 from __future__ import annotations
 
+import re
+
 import numpy as np
 from typing_extensions import TypedDict
 
@@ -145,6 +147,31 @@ def decode_intensity(
         frame = np.frombuffer(data[i * per : (i + 1) * per], dtype="<u2")
         out[i] = frame.reshape((rows, im_width))
     return out
+
+
+class OptimalGated(TypedDict):
+    steps: int
+    offset: int
+    min_step: int
+
+
+def _last_int(line: str, default: int = 0) -> int:
+    matches = re.findall(r"-?\d+", line)
+    return int(matches[-1]) if matches else default
+
+
+def parse_optimal_gated(text: str) -> OptimalGated:
+    """Parse the multi-line ``Gf`` response into steps/offset/min_step."""
+    steps = offset = min_step = 0
+    for line in strip_done(text).splitlines():
+        lowered = line.lower()
+        if "number of gate steps" in lowered:
+            steps = _last_int(line)
+        elif "gate offset" in lowered:
+            offset = _last_int(line)
+        elif "minimum gate step size" in lowered:
+            min_step = _last_int(line)
+    return OptimalGated(steps=steps, offset=offset, min_step=min_step)
 
 
 def parse_temperatures(text: str) -> dict[str, float]:

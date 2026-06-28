@@ -1,4 +1,11 @@
-import type { AcquireResult, BridgeStatus, IntensityParams, SystemInfo } from './types'
+import type {
+  AcquireResult,
+  BridgeStatus,
+  GatedParams,
+  IntensityParams,
+  OptimalParams,
+  SystemInfo,
+} from './types'
 
 async function getJson<T>(path: string): Promise<T> {
   const res = await fetch(path)
@@ -21,6 +28,19 @@ export async function acquireIntensity(params: IntensityParams): Promise<Acquire
     body: JSON.stringify(params),
   })
   return (await res.json()) as AcquireResult
+}
+
+export async function acquireGated(params: GatedParams): Promise<AcquireResult> {
+  const res = await fetch('/api/acquire/gated', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(params),
+  })
+  return (await res.json()) as AcquireResult
+}
+
+export function getOptimalParams(): Promise<OptimalParams> {
+  return getJson<OptimalParams>('/api/acquire/gated/optimal-params')
 }
 
 export function wsUrl(): string {

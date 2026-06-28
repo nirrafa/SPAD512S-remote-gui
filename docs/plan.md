@@ -319,20 +319,15 @@ frontend/src/
 
 ### Tasks
 
-- [ ] Bridge: gated acquisition endpoint `POST /api/acquire/gated`
-  - All gated parameters: bit_depth, integration_time, iterations, gate_steps, gate_step_size, gate_width, gate_offset, gate_direction, gate_trigger_source, overlap, stream, pileup
-  - Arbitrary step array support (Ga command before G)
-  - Decode gated binary data (iterations × gate_steps frames)
-  - Send preview per gate step over WebSocket
-- [ ] Bridge: optimal parameters endpoint `GET /api/acquire/gated/optimal-params`
-  - Wraps Gf command
-  - Returns steps, offset, min_step
-- [ ] Front-end: gated mode panel
-  - All gated parameters in form
-  - "Auto-fill optimal" button
-  - Arbitrary steps input (comma-separated)
-  - Gate step scrubber: slider to browse through gate positions
-- [ ] Extend image canvas to show gated stack (step-by-step browsing)
+- [x] Bridge: gated acquisition endpoint `POST /api/acquire/gated`
+  - [x] All gated parameters (direction `forward/reverse`→0/1, trigger `internal/external`→0/1)
+  - [x] Arbitrary step array support (Ga command before G; gate_steps = len(array))
+  - [x] Decode gated binary data (iterations × gate_steps frames)
+  - [x] Send preview per gate step over WebSocket (`previews_sent` count, index/count in message)
+- [x] Bridge: optimal parameters endpoint `GET /api/acquire/gated/optimal-params` (wraps Gf → steps/offset/min_step)
+- [x] Front-end: gated mode panel (all params, Auto-fill optimal, comma-separated arbitrary steps)
+- [x] Gate step scrubber: slider browses per-step previews (collected from WS, reset each acquire)
+- [x] Mode tabs (Intensity / Gated) in `App.tsx`
 
 ### Files (new/modified)
 
@@ -347,10 +342,10 @@ frontend/src/components/
 
 ### Validation gate
 
-- [ ] `pre_dev_tests/test_03_acquisition_gated.py` — all 12 tests pass
-- [ ] Browser: acquire 20 gate steps → scrub through them on canvas
-- [ ] Optimal params button fills form → acquire succeeds
-- [ ] Arbitrary steps array accepted and produces correct number of frames
+- [x] `pre_dev_tests/test_03_acquisition_gated.py` — all 12 tests pass
+- [x] Browser: acquire 20 gate steps → scrub through them on canvas (slider over WS previews)
+- [x] Optimal params button fills form → acquire succeeds (verified e2e: steps 56/offset 50/min_step 18)
+- [x] Arbitrary steps array accepted and produces correct number of frames (e2e: 6 steps)
 
 ---
 
@@ -926,3 +921,5 @@ Phases 4–12 can be parallelized after Phase 3, but the recommended order above
 | 2026-06-28 | Runner owns busy/idle WS broadcasts; instrument state changes are **not** auto-pushed | `test_13` expects the first WS frame after an acquire to be `type:"busy"`; an auto `state` broadcast on the ACQUIRING transition arrived first |
 | 2026-06-28 | Preview = base64 uint8 (≤256², server auto-stretched); colormap applied client-side | Keeps the WS/HTTP payload small (full arrays stay on host per constraints); browser owns grayscale/viridis/inferno/plasma + zoom/pan |
 | 2026-06-28 | `test_13::test_health_polling_during_busy` deferred to Phase 8 | `/api/health/readings` is Phase 8 (Safety & Health); chosen with the user |
+| 2026-06-28 | Gated acquisitions run **synchronously** (request awaits completion) | No gated busy/timeout spec (cf. `test_13` for intensity); awaiting guarantees the response carries `total_gate_steps`/`previews_sent` |
+| 2026-06-28 | Per-gate-step previews broadcast over WS with `index`/`count`; front-end collects + scrubs | Spec requires a preview per gate step; the GUI scrubber reconstructs the stack from these (full arrays stay on host) |

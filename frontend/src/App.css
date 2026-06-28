@@ -126,3 +126,37 @@ header h1 {
 .muted {
   color: #888;
 }
+
+.tabs {
+  display: flex;
+  gap: 0.5rem;
+  max-width: 1100px;
+  margin: 1rem auto 0;
+  padding: 0 1.5rem;
+}
+.tabs button {
+  background: #1b1b1b;
+  color: #aaa;
+  border: 1px solid #333;
+  border-bottom: none;
+  border-radius: 6px 6px 0 0;
+  padding: 0.5rem 1rem;
+  cursor: pointer;
+}
+.tabs button.active {
+  background: #2a2a2a;
+  color: #fff;
+}
+
+.gate-slider {
+  margin: 0.5rem 0;
+}
+.gate-slider label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-size: 0.85rem;
+}
+.gate-slider input[type='range'] {
+  width: 100%;
+}

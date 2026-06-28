@@ -7,13 +7,21 @@ background. Full decoding/preview/save live in the runner and services.
 """
 from __future__ import annotations
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, ConfigDict
 
-from bridge.core.acquisition import AcquisitionRunner, IntensityParams
+from bridge.core.acquisition import AcquisitionRunner, GatedParams, IntensityParams
 from bridge.core.instrument import InstrumentState, InstrumentStatus
-from bridge.protocol.client import ProtocolClient
-from bridge.protocol.decoder import INT_BIT_DEPTHS, ROI_WIDTHS_512, ROI_WIDTHS_1024
+from bridge.protocol import commands
+from bridge.protocol.client import NotConnectedError, ProtocolClient, ProtocolError
+from bridge.protocol.decoder import (
+    GATED_BIT_DEPTHS,
+    INT_BIT_DEPTHS,
+    ROI_WIDTHS_512,
+    ROI_WIDTHS_1024,
+    OptimalGated,
+    parse_optimal_gated,
+)
 
 router = APIRouter(prefix="/api/acquire")
 
@@ -73,5 +81,81 @@ async def acquire_intensity(request: Request, params: IntensityRequest) -> dict[
             overlap=params.overlap,
             pileup_correction=params.pileup_correction,
             timeout_s=params.timeout_s,
+        )
+    )
+
+
+class GatedRequest(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    bit_depth: int = 8
+    integration_time: float | None = None
+    integration_time_ms: float | None = None
+    iterations: int = 1
+    gate_steps: int = 10
+    gate_step_size_ps: float = 18.0
+    gate_width: int = 5
+    gate_offset: int = 0
+    gate_direction: str = "forward"
+    gate_trigger_source: str = "external"
+    overlap: bool = False
+    stream: bool = False
+    pileup_correction: bool = False
+    arbitrary_steps: list[float] | None = None
+
+    @property
+    def resolved_integration_time(self) -> float:
+        if self.integration_time_ms is not None:
+            return self.integration_time_ms
+        if self.integration_time is not None:
+            return self.integration_time
+        return 100.0
+
+
+@router.get("/gated/optimal-params")
+async def gated_optimal_params(
+    request: Request, gate_step_size: float = 18.0, gate_width: int = 5
+) -> OptimalGated:
+    protocol: ProtocolClient = request.app.state.protocol
+    try:
+        text = await protocol.send_command(
+            commands.optimal_gated_params(gate_step_size=gate_step_size, gate_width=gate_width)
+        )
+    except NotConnectedError as exc:
+        raise HTTPException(status_code=503, detail="vendor disconnected") from exc
+    except ProtocolError as exc:
+        raise HTTPException(status_code=502, detail=f"vendor error: {exc}") from exc
+    return parse_optimal_gated(text)
+
+
+@router.post("/gated")
+async def acquire_gated(request: Request, params: GatedRequest) -> dict[str, object]:
+    protocol: ProtocolClient = request.app.state.protocol
+    runner: AcquisitionRunner = request.app.state.runner
+
+    if not protocol.connected:
+        return {"status": "error", "message": "vendor disconnected"}
+    if params.bit_depth not in GATED_BIT_DEPTHS:
+        return {"status": "error", "message": f"invalid gated bit_depth {params.bit_depth}"}
+    if params.gate_direction not in ("forward", "reverse"):
+        return {"status": "error", "message": f"invalid gate_direction {params.gate_direction}"}
+    if params.gate_trigger_source not in ("internal", "external"):
+        return {"status": "error", "message": f"invalid trigger {params.gate_trigger_source}"}
+
+    return await runner.run_gated(
+        GatedParams(
+            bit_depth=params.bit_depth,
+            integration_time=params.resolved_integration_time,
+            iterations=params.iterations,
+            gate_steps=params.gate_steps,
+            gate_step_size=params.gate_step_size_ps,
+            gate_offset=params.gate_offset,
+            gate_width=params.gate_width,
+            gate_direction=params.gate_direction,
+            gate_trigger_source=params.gate_trigger_source,
+            overlap=params.overlap,
+            stream=params.stream,
+            pileup_correction=params.pileup_correction,
+            arbitrary_steps=params.arbitrary_steps,
         )
     )
