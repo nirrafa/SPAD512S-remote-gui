@@ -83,6 +83,7 @@ and coercion into one call; convert the existing sites.
 | B-12 | S3 | On passive disconnect, `_teardown` cancelled the running idle task then `await`ed `wait_closed()`, so the `CancelledError` skipped the `_reader`/`_writer = None` resets. Refs now cleared before the cancellable await. | Phase 2 review fixes | covered by `TestAutoReconnect` |
 | B-13 | S2 | A vendor `ERROR` reply to a text command was returned as a normal string → downstream parser raised `ValueError` (HTTP 500). `send_command` now raises `ProtocolError`; `/api/system/triggers` returns 502. | Phase 2 review fixes | covered by `ProtocolError` path |
 | B-14 | S3 | Default-suite `client` fixture built the app on vendor port 9999 with no mock, so tests could connect to a stray dev mock. Now uses an unused ephemeral port. | Phase 2 review fixes | n/a (isolation) |
+| B-15 | S2 | Bridge test fixtures left `data_root` at its default `"data"`, so every acquisition test (and manual run) wrote a real multi-frame `.npy` into the shared `./data` tree and never cleaned up — 320 folders / 3.3 GB accumulated. Fixtures now set `data_root=str(tmp_path)` (per-test temp dir). | this session | `tests/test_bridge_api.py`, `pre_dev_tests/conftest.py`, `tests/conftest.py` fixtures + verified `./data` is not recreated by the suite |
 
 ---
 

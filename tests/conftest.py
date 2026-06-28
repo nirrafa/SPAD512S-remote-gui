@@ -22,9 +22,16 @@ def _unused_port() -> int:
 
 
 @pytest.fixture
-def app():
-    # Isolate the default suite from any stray vendor/mock on 9999.
-    return create_app(Settings(vendor_host="127.0.0.1", vendor_port=_unused_port()))
+def app(tmp_path):
+    # Isolate the default suite from any stray vendor/mock on 9999, and keep
+    # acquisitions out of the shared ./data tree.
+    return create_app(
+        Settings(
+            vendor_host="127.0.0.1",
+            vendor_port=_unused_port(),
+            data_root=str(tmp_path),
+        )
+    )
 
 
 @pytest.fixture

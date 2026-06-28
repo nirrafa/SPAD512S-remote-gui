@@ -22,8 +22,10 @@ def vendor() -> Iterator[MockVendorServer]:
 
 
 @pytest.fixture
-def client(vendor: MockVendorServer) -> Iterator[TestClient]:
-    settings = Settings(vendor_host="127.0.0.1", vendor_port=vendor.port)
+def client(vendor: MockVendorServer, tmp_path) -> Iterator[TestClient]:
+    settings = Settings(
+        vendor_host="127.0.0.1", vendor_port=vendor.port, data_root=str(tmp_path)
+    )
     with TestClient(create_app(settings)) as test_client:
         _wait_connected(test_client, expected=True)
         yield test_client

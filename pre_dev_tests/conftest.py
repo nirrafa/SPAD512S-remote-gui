@@ -87,11 +87,15 @@ def mock_vendor_server():
 
 
 @pytest.fixture
-def bridge_client(mock_vendor_server):
+def bridge_client(mock_vendor_server, tmp_path):
     """An HTTP/WebSocket client connected to a running bridge instance
     that is itself connected to the mock vendor server."""
     mock_vendor_server.start()
-    settings = Settings(vendor_host="127.0.0.1", vendor_port=mock_vendor_server.port)
+    settings = Settings(
+        vendor_host="127.0.0.1",
+        vendor_port=mock_vendor_server.port,
+        data_root=str(tmp_path),
+    )
     client = BridgeTestClient(create_app(settings))
     client.get("/api/status", retry=True, timeout=5)
     yield client
