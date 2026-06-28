@@ -304,7 +304,7 @@ frontend/src/
 
 ### Validation gate
 
-- [x] `pre_dev_tests/test_02_acquisition_intensity.py` — all 11 tests pass
+- [x] `pre_dev_tests/test_02_acquisition_intensity.py` — all 26 tests pass
 - [x] `pre_dev_tests/test_13_concurrency_and_serialization.py` — 4/5 (serialization, busy rejection, busy broadcast ×2); `test_health_polling_during_busy` deferred to Phase 8
 - [x] Acquire 8-bit/100ms/1-iter → `done` + 256×256 preview returned (verified e2e via curl; GUI renders it)
 - [x] Acquire while busy → `{"status":"error","message":"instrument busy"}`

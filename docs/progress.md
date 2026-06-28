@@ -12,8 +12,8 @@
 |---|---|---|---|
 | 0 | Project setup & tooling | ✅ Done | gate ✓ |
 | 1 | Mock vendor server | ✅ Done | 19 / 19 |
-| 2 | Bridge core | ✅ Done | 17 / 19 (test_01 14 + reconnect 3; rest of test_12 is Phase 9) |
-| 3 | Intensity mode (vertical slice) | ✅ Done | 15 / 16 (test_02 11 + test_13 4/5; health-poll → Phase 8) |
+| 2 | Bridge core | ✅ Done | test_01 14/14, test_12 reconnect 4/9 (rest of test_12 → Phase 9) |
+| 3 | Intensity mode (vertical slice) | ✅ Done | test_02 26/26, test_13 4/5 (health-poll → Phase 8) |
 | 4 | Gated time-resolved mode | ✅ Done | 12 / 12 |
 | 5 | FLIM mode | Not started | 0 / 9 |
 | 6 | Raw 1-bit single-photon | Not started | 0 / 5 |
@@ -24,7 +24,9 @@
 | 11 | Front-end visualization | Not started | 0 / 12 |
 | 12 | Experiment log & presets | Not started | 0 / 16 |
 | 13 | Integration & hardware bring-up | Not started | 0 / 11 |
-| **Total** | | | **0 / 185** |
+| **Total** | Phases 0–4 done | | **86 / 202 pre-dev tests passing** |
+
+> Note: the 202 collected pre-dev tests exceed the plan's original 185 estimate; per-file counts (e.g. `test_02` = 26, not 11) differ from the plan's mapping table. The remaining failures are Phases 5–13 plus the two in-scope deferrals (`test_13` health-poll → Phase 8; `test_12` sweep/disconnect → Phase 9).
 
 ---
 
