@@ -21,6 +21,12 @@ See [docs/plan.md](docs/plan.md) for the phased implementation plan and
 [docs/PRD.md](docs/PRD.md) for requirements. To exercise the bridge yourself with
 no hardware, see [docs/manual-testing.md](docs/manual-testing.md).
 
+## Quick start (no CLI)
+
+Double-click a launcher in [`launchers/`](launchers/) to start the mock camera +
+bridge + GUI and open your browser — see [launchers/README.md](launchers/README.md).
+After a one-time `python3.11 -m venv .venv && pip install -e ".[dev]"`.
+
 ## Development
 
 ### Bridge
