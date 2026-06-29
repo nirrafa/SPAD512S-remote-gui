@@ -32,5 +32,6 @@ Thumbs.db
 *.npy
 *.hdf5
 
-# Claude Code agent worktrees
+# Claude Code agent worktrees + local preview config
 .claude/worktrees/
+.claude/launch.json

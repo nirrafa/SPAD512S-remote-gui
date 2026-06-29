@@ -46,7 +46,11 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-sleep 4
+echo "Waiting for the GUI to be ready (first run can take ~10s)..."
+for _ in $(seq 1 60); do
+  if curl -sf -o /dev/null "http://localhost:5173/"; then break; fi
+  sleep 1
+done
 open_url "http://localhost:5173"
 
 echo
