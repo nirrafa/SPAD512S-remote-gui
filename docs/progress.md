@@ -17,14 +17,14 @@
 | 4 | Gated time-resolved mode | ✅ Done | 12 / 12 |
 | 5 | FLIM mode | ✅ Done | test_04 11/11 |
 | 6 | Raw 1-bit single-photon | ✅ Done | test_05 5/5 |
-| 7 | Calibration system | Not started | 0 / 13 |
+| 7 | Calibration system | ✅ Done | test_07 13/13 |
 | 8 | Safety, health & auto-protect | Not started | 0 / 17 |
 | 9 | Sweeps, scheduling & resilience | Not started | 0 / 18 |
 | 10 | Data handling & reducer | Not started | 0 / 18 |
 | 11 | Front-end visualization | Not started | 0 / 12 |
 | 12 | Experiment log & presets | Not started | 0 / 16 |
 | 13 | Integration & hardware bring-up | Not started | 0 / 11 |
-| **Total** | Phases 0–6 done | | **102 / 202 pre-dev tests passing** |
+| **Total** | Phases 0–7 done | | **115 / 202 pre-dev tests passing** |
 
 > Note: the 202 collected pre-dev tests exceed the plan's original 185 estimate; per-file counts (e.g. `test_02` = 26, not 11) differ from the plan's mapping table. The remaining failures are Phases 5–13 plus the two in-scope deferrals (`test_13` health-poll → Phase 8; `test_12` sweep/disconnect → Phase 9).
 
@@ -63,11 +63,31 @@ Copy this block for each new entry. Most recent session goes on top.
 
 <!-- Add new entries below this line, most recent first -->
 
+### 2026-06-29 — Phase 7: Calibration system
+
+**Phase(s):** 7
+**Duration:** ~1.5h
+**Who:** Nir + Claude (parallel agent)
+
+#### Done
+- **Bridge:** `core/calibration_state.py` — in-memory `CalibrationStore` tracking per-kind `state` / `timestamp` / `stale` (lock-guarded); breakdown marked `done` when the vendor is connected (the connect handshake performs breakdown), the rest start `none`.
+- **Bridge:** `commands.calibrate(kind)` (`CALIB,3/0/1/2`); extended `routes/calibration.py` with `POST /api/calibrate/{breakdown,noise,dead-pixel,master-slave-offset}` (each returns `{status:"done"}` + a `setup_prompt` where relevant), `GET /api/calibration/status` (includes `flim_irf` from the Phase 5 flag), and `GET /api/calibration/dcr-curve` (short dark intensity acquire → `decode_intensity` → sorted DCR-vs-percentage via percentiles).
+- **Bridge:** `POST /api/acquire/intensity` now appends `calibration_valid` (noise AND dead_pixel done & not stale) and a `warning` when invalid; FLIM IRF endpoint untouched.
+- **Front-end:** `CalibrationPage` + `CalibrationCard` (state/timestamp/stale badge, guided prompt, run button) + `DCRCurveChart` (SVG line); new "Calibration" tab in `App.tsx`; api client/types extended.
+- **Tests:** `test_07` 13/13; ruff + mypy clean; frontend build/lint/test green.
+
+#### Decisions made
+- Breakdown is reflected as `done` lazily in `GET /api/calibration/status` (and eagerly at startup if already connected), since the mock's connect handshake does not emit the breakdown banner but the spec only requires `done`/`running`.
+- Staleness is a simple `False` flag for the mock; the 24h / Vex-change rule is noted for Phase 13.
+
+#### Next session
+- Phase 8 (safety/health) can consume calibration state for warnings.
+
 ### 2026-06-29 — Phase 6: Raw 1-bit single-photon mode
 
 **Phase(s):** 6
 **Duration:** ~1h
-**Who:** Nir + Claude
+**Who:** Nir + Claude (parallel agent)
 
 #### Done
 - Bridge: `POST /api/acquire/raw-1bit` (`Raw1BitRequest`) in `bridge/routes/acquire.py`.
@@ -76,8 +96,8 @@ Copy this block for each new entry. Most recent session goes on top.
 - Front-end: `Raw1BitPage` + `Raw1BitPanel` (bit depth locked to 1, integration
   time in µs), `acquireRaw1Bit` client + `Raw1BitParams` type, and a "Raw 1-bit"
   tab in `App.tsx`.
-- `pre_dev_tests/test_05_acquisition_raw_1bit.py` → 5/5. No regressions
-  (`tests/` 17/17, `test_02` 26/26). ruff + mypy clean; frontend build/lint/test green.
+- `pre_dev_tests/test_05_acquisition_raw_1bit.py` → 5/5. No regressions. ruff + mypy
+  clean; frontend build/lint/test green.
 
 #### Decisions made
 - No `bridge/services/raw_1bit.py` (plan had stubbed one). The existing 1-bit
@@ -85,14 +105,10 @@ Copy this block for each new entry. Most recent session goes on top.
   the binary unpacking, so a separate service module would be dead indirection;
   the endpoint reuses `run_intensity`.
 
-#### Bugs / issues encountered
-- None.
-
-#### Blocked on
-- Nothing.
-
-#### Next session
-- Phase 7 (calibration) — being developed in parallel.
+#### Phase 6 + 7 integration note
+- Built in parallel (isolated worktrees) off the Phase 5 `main`; merged sequentially.
+  Conflicts in `App.tsx` (tabs), `api/types.ts` (`AcquireResult` fields), and this
+  log were resolved by keeping both sides.
 
 ### 2026-06-28 — Phase 5: FLIM mode
 

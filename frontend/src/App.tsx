@@ -1,11 +1,12 @@
 import { useState } from 'react'
 import './App.css'
+import { CalibrationPage } from './pages/CalibrationPage'
 import { FLIMPage } from './pages/FLIMPage'
 import { GatedPage } from './pages/GatedPage'
 import { IntensityPage } from './pages/IntensityPage'
 import { Raw1BitPage } from './pages/Raw1BitPage'
 
-type Mode = 'intensity' | 'gated' | 'flim' | 'raw1bit'
+type Mode = 'intensity' | 'gated' | 'flim' | 'raw1bit' | 'calibration'
 
 function App() {
   const [mode, setMode] = useState<Mode>('intensity')
@@ -40,11 +41,19 @@ function App() {
         >
           Raw 1-bit
         </button>
+        <button
+          type="button"
+          className={mode === 'calibration' ? 'active' : ''}
+          onClick={() => setMode('calibration')}
+        >
+          Calibration
+        </button>
       </nav>
       {mode === 'intensity' && <IntensityPage />}
       {mode === 'gated' && <GatedPage />}
       {mode === 'flim' && <FLIMPage />}
       {mode === 'raw1bit' && <Raw1BitPage />}
+      {mode === 'calibration' && <CalibrationPage />}
     </>
   )
 }

@@ -54,6 +54,8 @@ export interface AcquireResult {
   mode?: string
   decode_method?: string
   bit_depth?: number
+  calibration_valid?: boolean
+  warning?: string
 }
 
 export interface GatedParams {
@@ -111,6 +113,32 @@ export interface FLIMResult {
   preview?: Preview
   total_gate_steps?: number
   output_format?: string
+}
+
+export type CalibrationKind =
+  | 'breakdown'
+  | 'noise'
+  | 'dead_pixel'
+  | 'master_slave_offset'
+  | 'flim_irf'
+
+export interface CalibrationEntry {
+  state: 'none' | 'running' | 'done' | 'failed'
+  timestamp?: number
+  stale?: boolean
+}
+
+export type CalibrationStatus = Record<CalibrationKind, CalibrationEntry>
+
+export interface CalibrationStepResult {
+  status: 'done' | 'error'
+  message?: string
+  setup_prompt?: string
+}
+
+export interface DCRCurve {
+  percentages: number[]
+  dcr_values: number[]
 }
 
 export type WsMessage =

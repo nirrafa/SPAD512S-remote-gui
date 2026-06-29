@@ -30,6 +30,19 @@ def pileup(enabled: bool) -> str:
     return f"PU,{1 if enabled else 0}"
 
 
+# Calibration kinds map to the vendor CALIB sub-command codes.
+CALIBRATION_CODES = {
+    "noise": 0,
+    "dead_pixel": 1,
+    "master_slave_offset": 2,
+    "breakdown": 3,
+}
+
+
+def calibrate(kind: str) -> str:
+    return f"CALIB,{CALIBRATION_CODES[kind]}"
+
+
 def intensity(
     *,
     bit_depth: int,
