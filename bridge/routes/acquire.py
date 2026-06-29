@@ -88,6 +88,47 @@ async def acquire_intensity(request: Request, params: IntensityRequest) -> dict[
     )
 
 
+class Raw1BitRequest(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    integration_time_us: float = 100.0
+    iterations: int = 1
+    roi_width: int = 512
+    overlap: bool = False
+    timeout_s: float | None = None
+
+
+@router.post("/raw-1bit")
+async def acquire_raw_1bit(request: Request, params: Raw1BitRequest) -> dict[str, object]:
+    protocol: ProtocolClient = request.app.state.protocol
+    runner: AcquisitionRunner = request.app.state.runner
+
+    if not protocol.connected:
+        return {"status": "error", "message": "vendor disconnected"}
+
+    sensor_size = protocol.system_info["sensor_size"] if protocol.system_info else 512
+    valid_widths = ROI_WIDTHS_1024 if sensor_size == 1024 else ROI_WIDTHS_512
+    if params.roi_width not in valid_widths:
+        return {"status": "error", "message": f"invalid roi_width {params.roi_width}"}
+    if params.iterations < 1:
+        return {"status": "error", "message": "iterations must be >= 1"}
+
+    result = await runner.run_intensity(
+        IntensityParams(
+            bit_depth=1,
+            integration_time=params.integration_time_us,
+            iterations=params.iterations,
+            roi_width=params.roi_width,
+            overlap=params.overlap,
+            pileup_correction=False,
+            timeout_s=params.timeout_s,
+        )
+    )
+    result["decode_method"] = "binary_unpack"
+    result["bit_depth"] = 1
+    return result
+
+
 class GatedRequest(BaseModel):
     model_config = ConfigDict(extra="ignore")
 

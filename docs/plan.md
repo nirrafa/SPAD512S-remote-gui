@@ -395,26 +395,34 @@ frontend/src/pages/
 
 ### Tasks
 
-- [ ] Bridge: raw 1-bit endpoint `POST /api/acquire/raw-1bit`
+- [x] Bridge: raw 1-bit endpoint `POST /api/acquire/raw-1bit`
   - Uses intensity path with bit_depth=1
   - Distinct binary unpacking (np.unpackbits, rot90)
   - Tag decode_method as "binary_unpack"
-- [ ] Front-end: raw 1-bit panel (lightweight — reuses intensity panel with locked bit depth)
+- [x] Front-end: raw 1-bit panel (lightweight — reuses intensity panel with locked bit depth)
 
 ### Files (new/modified)
 
 ```
-bridge/services/
-    └── raw_1bit.py
+bridge/routes/acquire.py        # Raw1BitRequest + POST /api/acquire/raw-1bit (reuses run_intensity)
 frontend/src/pages/
     └── Raw1BitPage.tsx
+frontend/src/components/
+    └── Raw1BitPanel.tsx
+frontend/src/api/{client.ts,types.ts}
+frontend/src/App.tsx            # "Raw 1-bit" tab
 ```
+
+> Deviation: no `bridge/services/raw_1bit.py`. The 1-bit decode and intensity
+> acquisition paths already fully support `bit_depth=1`; the endpoint reuses
+> `AcquisitionRunner.run_intensity` and tags the result, so a separate service
+> module would be dead indirection.
 
 ### Validation gate
 
-- [ ] `pre_dev_tests/test_05_acquisition_raw_1bit.py` — all 5 tests pass
-- [ ] Decode produces 512×512 binary images
-- [ ] Multiple iterations produce correct frame count
+- [x] `pre_dev_tests/test_05_acquisition_raw_1bit.py` — all 5 tests pass
+- [x] Decode produces 512×512 binary images
+- [x] Multiple iterations produce correct frame count
 
 ---
 
