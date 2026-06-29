@@ -31,3 +31,6 @@ Thumbs.db
 # Data (large files)
 *.npy
 *.hdf5
+
+# Claude Code agent worktrees
+.claude/worktrees/
