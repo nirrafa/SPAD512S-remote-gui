@@ -17,7 +17,7 @@
 | 4 | Gated time-resolved mode | ✅ Done | 12 / 12 |
 | 5 | FLIM mode | ✅ Done | test_04 11/11 |
 | 6 | Raw 1-bit single-photon | Not started | 0 / 5 |
-| 7 | Calibration system | Not started | 0 / 13 |
+| 7 | Calibration system | ✅ Done | test_07 13/13 |
 | 8 | Safety, health & auto-protect | Not started | 0 / 17 |
 | 9 | Sweeps, scheduling & resilience | Not started | 0 / 18 |
 | 10 | Data handling & reducer | Not started | 0 / 18 |
@@ -62,6 +62,29 @@ Copy this block for each new entry. Most recent session goes on top.
 ---
 
 <!-- Add new entries below this line, most recent first -->
+
+### 2026-06-29 — Phase 7: Calibration system
+
+**Phase(s):** 7
+**Duration:** ~1.5h
+**Who:** Nir + Claude
+
+#### Done
+- **Bridge:** `core/calibration_state.py` — in-memory `CalibrationStore` tracking per-kind `state` / `timestamp` / `stale` (lock-guarded); breakdown marked `done` when the vendor is connected (the connect handshake performs breakdown), the rest start `none`.
+- **Bridge:** `commands.calibrate(kind)` (`CALIB,3/0/1/2`); extended `routes/calibration.py` with `POST /api/calibrate/{breakdown,noise,dead-pixel,master-slave-offset}` (each returns `{status:"done"}` + a `setup_prompt` where relevant), `GET /api/calibration/status` (includes `flim_irf` from the Phase 5 flag), and `GET /api/calibration/dcr-curve` (short dark intensity acquire → `decode_intensity` → sorted DCR-vs-percentage via percentiles).
+- **Bridge:** `POST /api/acquire/intensity` now appends `calibration_valid` (noise AND dead_pixel done & not stale) and a `warning` when invalid; FLIM IRF endpoint untouched.
+- **Front-end:** `CalibrationPage` + `CalibrationCard` (state/timestamp/stale badge, guided prompt, run button) + `DCRCurveChart` (SVG line); new "Calibration" tab in `App.tsx`; api client/types extended.
+- **Tests:** `test_07` 13/13; `tests/` + `test_02` + `test_04` green (54 passed). ruff + mypy clean; frontend build/lint/test green.
+
+#### Decisions made
+- Breakdown is reflected as `done` lazily in `GET /api/calibration/status` (and eagerly at startup if already connected), since the mock's connect handshake does not emit the breakdown banner but the spec only requires `done`/`running`.
+- Staleness is a simple `False` flag for the mock; the 24h / Vex-change rule is noted for Phase 13.
+
+#### Blocked on
+- Nothing.
+
+#### Next session
+- Phase 8 (safety/health) can consume calibration state for warnings.
 
 ### 2026-06-28 — Phase 5: FLIM mode
 

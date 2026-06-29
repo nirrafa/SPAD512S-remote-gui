@@ -75,7 +75,7 @@ async def acquire_intensity(request: Request, params: IntensityRequest) -> dict[
     if params.iterations < 1:
         return {"status": "error", "message": "iterations must be >= 1"}
 
-    return await runner.run_intensity(
+    result = await runner.run_intensity(
         IntensityParams(
             bit_depth=params.bit_depth,
             integration_time=params.resolved_integration_time,
@@ -86,6 +86,13 @@ async def acquire_intensity(request: Request, params: IntensityRequest) -> dict[
             timeout_s=params.timeout_s,
         )
     )
+
+    store = request.app.state.calibration
+    calibration_valid = store.is_valid("noise") and store.is_valid("dead_pixel")
+    result["calibration_valid"] = calibration_valid
+    if not calibration_valid:
+        result["warning"] = "Noise / dead-pixel calibration missing or stale."
+    return result
 
 
 class GatedRequest(BaseModel):

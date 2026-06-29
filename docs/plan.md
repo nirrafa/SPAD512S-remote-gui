@@ -424,23 +424,23 @@ frontend/src/pages/
 
 ### Tasks
 
-- [ ] Bridge: calibration state store (SQLite or in-memory with persistence)
+- [x] Bridge: calibration state store (SQLite or in-memory with persistence)
   - Per-calibration: state (none/running/done/failed), timestamp, stale flag
   - Staleness rules (e.g., noise cal stale after 24h or Vex change)
-- [ ] Bridge: calibration endpoints
+- [x] Bridge: calibration endpoints
   - `POST /api/calibrate/breakdown` — auto on connect
   - `POST /api/calibrate/noise` — requires dark, returns setup prompt
   - `POST /api/calibrate/dead-pixel` — requires dark
   - `POST /api/calibrate/master-slave-offset` — requires uniform pulsed illumination
   - `GET /api/calibration/status` — all calibration states
   - `GET /api/calibration/dcr-curve` — sorted DCR curve data after noise/dead cal
-- [ ] Bridge: uncalibrated warning logic
+- [x] Bridge: uncalibrated warning logic
   - Before any acquisition, check calibration state
   - Return warning field if noise/dead-pixel calibration is missing or stale
-- [ ] Bridge: DCR curve computation
+- [x] Bridge: DCR curve computation
   - After noise/dead calibration, take a short dark measurement
   - Sort pixel values, compute DCR vs percentage curve
-- [ ] Front-end: calibration dashboard page
+- [x] Front-end: calibration dashboard page
   - Status cards for each calibration type (with timestamp, stale badge)
   - Guided prompts: "Cap the objective", "Provide uniform pulsed source"
   - DCR curve chart (before/after, as in `cSPAD_example_script.py`)
@@ -466,12 +466,12 @@ frontend/src/components/
 
 ### Validation gate
 
-- [ ] `pre_dev_tests/test_07_calibration.py` — all 13 tests pass
-- [ ] Breakdown calibration runs on bridge startup
-- [ ] Noise calibration returns setup prompt, completes, updates state
-- [ ] DCR curve data available after noise calibration
-- [ ] Intensity acquisition with no noise cal → response includes warning
-- [ ] Browser: calibration page shows status cards, DCR chart renders
+- [x] `pre_dev_tests/test_07_calibration.py` — all 13 tests pass
+- [x] Breakdown calibration runs on bridge startup
+- [x] Noise calibration returns setup prompt, completes, updates state
+- [x] DCR curve data available after noise calibration
+- [x] Intensity acquisition with no noise cal → response includes warning
+- [x] Browser: calibration page shows status cards, DCR chart renders
 
 ---
 

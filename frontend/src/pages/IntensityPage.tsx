@@ -52,6 +52,7 @@ export function IntensityPage() {
         />
 
         <section className="viewer">
+          {acq.lastResult?.warning && <p className="warning">⚠ {acq.lastResult.warning}</p>}
           <div className="viewer-toolbar">
             <label>
               Colormap

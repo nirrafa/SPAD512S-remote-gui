@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from bridge import __version__
 from bridge.config import Settings, get_settings
 from bridge.core.acquisition import AcquisitionRunner
+from bridge.core.calibration_state import CalibrationStore
 from bridge.core.instrument import InstrumentState
 from bridge.core.ws_hub import WebSocketHub
 from bridge.protocol.client import ProtocolClient
@@ -38,7 +39,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.protocol = protocol
     app.state.flim_irf_calibrated = False
 
+    calibration_store = CalibrationStore()
+    app.state.calibration = calibration_store
+
     await protocol.start()
+    # ProtocolClient performs the breakdown handshake on connect (see
+    # protocol/client.py), so breakdown is already done by the time we get here.
+    if protocol.connected:
+        calibration_store.mark_done("breakdown")
     sensor_size = protocol.system_info["sensor_size"] if protocol.system_info else 512
     app.state.runner = AcquisitionRunner(
         protocol, instrument, hub, settings.data_root, sensor_size=sensor_size
@@ -68,6 +76,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(system.router)
     app.include_router(acquire.router)
     app.include_router(calibration.router)
+    app.include_router(calibration.status_router)
     app.include_router(ws.router)
     return app
 
