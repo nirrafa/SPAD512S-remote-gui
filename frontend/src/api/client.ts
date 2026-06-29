@@ -8,6 +8,7 @@ import type {
   GatedParams,
   IntensityParams,
   OptimalParams,
+  Raw1BitParams,
   SystemInfo,
 } from './types'
 
@@ -36,6 +37,15 @@ export function getSystemInfo(): Promise<SystemInfo> {
 
 export async function acquireIntensity(params: IntensityParams): Promise<AcquireResult> {
   const res = await fetch('/api/acquire/intensity', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(params),
+  })
+  return (await res.json()) as AcquireResult
+}
+
+export async function acquireRaw1Bit(params: Raw1BitParams): Promise<AcquireResult> {
+  const res = await fetch('/api/acquire/raw-1bit', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(params),

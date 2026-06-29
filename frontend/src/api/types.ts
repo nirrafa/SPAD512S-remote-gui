@@ -33,6 +33,14 @@ export interface IntensityParams {
   timeout_s?: number
 }
 
+export interface Raw1BitParams {
+  integration_time_us: number
+  iterations: number
+  roi_width: number
+  overlap: boolean
+  timeout_s?: number
+}
+
 export interface AcquireResult {
   status: 'done' | 'running' | 'busy' | 'error' | 'timeout'
   message?: string
@@ -44,6 +52,8 @@ export interface AcquireResult {
   integration_time_unit?: string
   bytes?: number
   mode?: string
+  decode_method?: string
+  bit_depth?: number
 }
 
 export interface GatedParams {

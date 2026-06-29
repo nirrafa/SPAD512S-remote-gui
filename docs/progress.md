@@ -16,7 +16,7 @@
 | 3 | Intensity mode (vertical slice) | ✅ Done | test_02 26/26, test_13 4/5 (health-poll → Phase 8) |
 | 4 | Gated time-resolved mode | ✅ Done | 12 / 12 |
 | 5 | FLIM mode | ✅ Done | test_04 11/11 |
-| 6 | Raw 1-bit single-photon | Not started | 0 / 5 |
+| 6 | Raw 1-bit single-photon | ✅ Done | test_05 5/5 |
 | 7 | Calibration system | Not started | 0 / 13 |
 | 8 | Safety, health & auto-protect | Not started | 0 / 17 |
 | 9 | Sweeps, scheduling & resilience | Not started | 0 / 18 |
@@ -24,7 +24,7 @@
 | 11 | Front-end visualization | Not started | 0 / 12 |
 | 12 | Experiment log & presets | Not started | 0 / 16 |
 | 13 | Integration & hardware bring-up | Not started | 0 / 11 |
-| **Total** | Phases 0–5 done | | **97 / 202 pre-dev tests passing** |
+| **Total** | Phases 0–6 done | | **102 / 202 pre-dev tests passing** |
 
 > Note: the 202 collected pre-dev tests exceed the plan's original 185 estimate; per-file counts (e.g. `test_02` = 26, not 11) differ from the plan's mapping table. The remaining failures are Phases 5–13 plus the two in-scope deferrals (`test_13` health-poll → Phase 8; `test_12` sweep/disconnect → Phase 9).
 
@@ -62,6 +62,37 @@ Copy this block for each new entry. Most recent session goes on top.
 ---
 
 <!-- Add new entries below this line, most recent first -->
+
+### 2026-06-29 — Phase 6: Raw 1-bit single-photon mode
+
+**Phase(s):** 6
+**Duration:** ~1h
+**Who:** Nir + Claude
+
+#### Done
+- Bridge: `POST /api/acquire/raw-1bit` (`Raw1BitRequest`) in `bridge/routes/acquire.py`.
+  Reuses `AcquisitionRunner.run_intensity` with `bit_depth=1` and integration time
+  in µs; tags the result with `decode_method:"binary_unpack"` and `bit_depth:1`.
+- Front-end: `Raw1BitPage` + `Raw1BitPanel` (bit depth locked to 1, integration
+  time in µs), `acquireRaw1Bit` client + `Raw1BitParams` type, and a "Raw 1-bit"
+  tab in `App.tsx`.
+- `pre_dev_tests/test_05_acquisition_raw_1bit.py` → 5/5. No regressions
+  (`tests/` 17/17, `test_02` 26/26). ruff + mypy clean; frontend build/lint/test green.
+
+#### Decisions made
+- No `bridge/services/raw_1bit.py` (plan had stubbed one). The existing 1-bit
+  decode (`decoder.decode_intensity`) and intensity acquisition path already do
+  the binary unpacking, so a separate service module would be dead indirection;
+  the endpoint reuses `run_intensity`.
+
+#### Bugs / issues encountered
+- None.
+
+#### Blocked on
+- Nothing.
+
+#### Next session
+- Phase 7 (calibration) — being developed in parallel.
 
 ### 2026-06-28 — Phase 5: FLIM mode
 
