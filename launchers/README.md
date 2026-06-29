@@ -1,7 +1,9 @@
 # Clickable launchers
 
-Start the **mock camera + bridge + web GUI** and open your browser at
-`http://localhost:5173`, without typing CLI commands.
+Start the **mock camera + bridge** and open your browser at
+`http://localhost:8080`, without typing CLI commands. The launcher builds the web
+GUI once and the **bridge serves it** — there is no separate dev server, so it's
+just one URL and one process.
 
 | File | How to run |
 |---|---|

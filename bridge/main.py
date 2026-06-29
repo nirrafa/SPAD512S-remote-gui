@@ -3,9 +3,11 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from bridge import __version__
 from bridge.config import Settings, get_settings
@@ -78,6 +80,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(calibration.router)
     app.include_router(calibration.status_router)
     app.include_router(ws.router)
+
+    # Serve the built single-page app at "/" (same origin as the API, so no Vite
+    # dev server is needed at runtime). Mounted last, after the API routers, so
+    # /api/* and /ws take precedence. Only mounted when a production build exists.
+    spa_dist = Path(__file__).resolve().parent.parent / "frontend" / "dist"
+    if (spa_dist / "index.html").exists():
+        app.mount("/", StaticFiles(directory=str(spa_dist), html=True), name="spa")
+
     return app
 
 
