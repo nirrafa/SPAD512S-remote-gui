@@ -100,6 +100,8 @@ The output array shape is `(rows, im_width, iterations * gate_steps)`. Frames ar
 
 Unlike intensity and gated modes, FLIM data comes as CSV text lines (one pixel per line), terminated by a `DONE` line. Each line contains comma-separated values, and the first value per line is used to reconstruct the 512×512 frames.
 
+**Phase 5 implementation notes (mock + bridge):** the line count is `512 × 512 × n_gates`, so `n_gates = total_values // (rows·cols)` (derived, not signalled). Parse fast with `np.fromstring(strip_done(text), sep="\n")`. The bridge requests **raw** FLIM (`F,i,…,raw=1`) and computes phasor + lifetime host-side rather than reading the vendor's image-mode file paths — cleaner and avoids host-filesystem coupling. Phasor per pixel is the first-harmonic DFT over the gate axis: `g = Σ Iₖcos(2πk/n)/ΣIₖ`, `s = Σ Iₖsin(2πk/n)/ΣIₖ`; single-exponential lifetime ∝ `s/g`. Transport only a downsampled g/s set to the browser (full maps stay on host).
+
 ---
 
 ## Hardware behavior

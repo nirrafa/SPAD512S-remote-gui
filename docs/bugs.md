@@ -94,3 +94,14 @@ and coercion into one call; convert the existing sites.
   gated frame width and emits 512. A caller passing `im_width≠512` to gated is a
   caller error; the bridge must constrain gated ROI width to 512 (or full sensor
   width) in Phase 4.
+
+- **B-16 — Mock FLIM payload is bounded (small gate-frame count) · S3 / Phase 13.**
+  The vendor raw-FLIM format is CSV — `512×512×frames` text lines, first value per
+  line = intensity (`python_tcp_stream_flim.py`). Full resolution × many gate frames
+  is tens of MB of text, too heavy for the suite, so `mock_server/synthetic_data.flim_decay_csv`
+  emits full 512×512 but a *small* gate-frame count (8, reduced by `gate_subsampling`).
+  The bridge decoder (`decode_flim_csv`) derives `n_gates` from the value count, so it
+  works for both the mock and real hardware. Two things to validate on the real camera
+  (Phase 13): the full gate-frame count, and that each raw line's **first** field is the
+  intensity (the bridge currently fast-parses one value per line via `np.fromstring`; real
+  lines may carry extra comma-separated fields).

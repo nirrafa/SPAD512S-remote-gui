@@ -1,9 +1,10 @@
 import { useState } from 'react'
 import './App.css'
+import { FLIMPage } from './pages/FLIMPage'
 import { GatedPage } from './pages/GatedPage'
 import { IntensityPage } from './pages/IntensityPage'
 
-type Mode = 'intensity' | 'gated'
+type Mode = 'intensity' | 'gated' | 'flim'
 
 function App() {
   const [mode, setMode] = useState<Mode>('intensity')
@@ -24,8 +25,17 @@ function App() {
         >
           Gated
         </button>
+        <button
+          type="button"
+          className={mode === 'flim' ? 'active' : ''}
+          onClick={() => setMode('flim')}
+        >
+          FLIM
+        </button>
       </nav>
-      {mode === 'intensity' ? <IntensityPage /> : <GatedPage />}
+      {mode === 'intensity' && <IntensityPage />}
+      {mode === 'gated' && <GatedPage />}
+      {mode === 'flim' && <FLIMPage />}
     </>
   )
 }

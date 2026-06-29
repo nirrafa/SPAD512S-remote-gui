@@ -127,6 +127,24 @@ header h1 {
   color: #888;
 }
 
+.warning {
+  color: #ffb74d;
+  font-size: 0.85rem;
+  margin: 0 0 0.5rem;
+}
+
+.phasor {
+  background: #111;
+  border: 1px solid #333;
+  border-radius: 6px;
+}
+
+.panel h3 {
+  margin: 0.5rem 0 0;
+  font-size: 0.9rem;
+  color: #bbb;
+}
+
 .tabs {
   display: flex;
   gap: 0.5rem;

@@ -68,6 +68,41 @@ export interface OptimalParams {
   min_step: number
 }
 
+export interface FLIMIrfParams {
+  calibration_type: 'mono_exponential' | 'bi_exponential'
+  expected_tau_ns: number | number[]
+  gate_width: 'short' | 'medium' | 'long'
+}
+
+export interface FLIMParams {
+  integration_time_ms: number
+  gate_subsampling: number
+  output_format: 'image' | 'raw'
+}
+
+export interface PhasorData {
+  g: number[]
+  s: number[]
+}
+
+export interface CalibrationResult {
+  status: 'done' | 'error'
+  message?: string
+  calibration_type?: string
+  gate_width?: string
+}
+
+export interface FLIMResult {
+  status: 'done' | 'error'
+  message?: string
+  warning?: string
+  phasor?: PhasorData
+  lifetime_map?: Preview
+  preview?: Preview
+  total_gate_steps?: number
+  output_format?: string
+}
+
 export type WsMessage =
   | { type: 'busy'; mode: string; progress: number }
   | { type: 'state'; data: Record<string, unknown> }

@@ -355,19 +355,19 @@ frontend/src/components/
 
 ### Tasks
 
-- [ ] Bridge: FLIM calibration endpoint `POST /api/calibrate/flim-irf`
+- [x] Bridge: FLIM calibration endpoint `POST /api/calibrate/flim-irf`
   - Mono/bi-exponential, expected τ, gate width (short/medium/long → 0/1/2)
-  - Store calibration state
-- [ ] Bridge: FLIM acquisition endpoint `POST /api/acquire/flim`
-  - Requires prior IRF calibration (warn/error if missing)
+  - Store calibration state (`app.state.flim_irf_calibrated`; generalized in Phase 7)
+- [x] Bridge: FLIM acquisition endpoint `POST /api/acquire/flim`
+  - Warns (status `done` + `warning`) if no prior IRF calibration
   - Decode FLIM text data (CSV lines → pixel arrays → frames)
-  - Extract phasor components (g, s)
+  - Extract phasor components (g, s); compute lifetime map host-side
   - Gate subsampling, image vs raw output
-- [ ] Front-end: FLIM mode panel
-  - IRF calibration section with guided prompts
+- [x] Front-end: FLIM mode panel
+  - IRF calibration section
   - Acquisition parameters
-  - Phasor scatter plot placeholder (full visualization in Phase 11)
-  - Lifetime map placeholder
+  - Phasor scatter (basic SVG over the semicircle; full visualization in Phase 11)
+  - Lifetime map via `ImageCanvas`
 
 ### Files (new/modified)
 
@@ -382,10 +382,10 @@ frontend/src/pages/
 
 ### Validation gate
 
-- [ ] `pre_dev_tests/test_04_acquisition_flim.py` — all 9 tests pass
-- [ ] IRF calibration completes → calibration state updated
-- [ ] FLIM acquisition without calibration → warning shown
-- [ ] Phasor g/s components returned in response
+- [x] `pre_dev_tests/test_04_acquisition_flim.py` — all 11 tests pass (9 cases; gate_width parametrized ×3)
+- [x] IRF calibration completes → calibration state updated
+- [x] FLIM acquisition without calibration → warning shown (status `done` + `warning`)
+- [x] Phasor g/s components returned in response
 
 ---
 
@@ -911,6 +911,9 @@ Phases 4–12 can be parallelized after Phase 3, but the recommended order above
 | 2026-06-27 | Repo: public GitHub `nirrafa/SPAD512S-remote-gui` | Per user request |
 | 2026-06-27 | Mock = shared pure protocol core + two front-ends (in-process harness, asyncio TCP) | One source of truth exercised by both spec tests and the real cSPAD client |
 | 2026-06-27 | `F,i` returns phasor data only in Phase 1; CSV-line FLIM text format deferred to Phase 5 | test_14 only needs `last_phasor_data`; text decoder belongs with FLIM work |
+| 2026-06-28 | Phase 5 FLIM: bridge always requests **raw** FLIM and computes phasor/lifetime host-side | Avoids the vendor's image-vs-raw file-path duality; cleaner architecture, satisfies the spec |
+| 2026-06-28 | Mock streams real FLIM CSV shape but with a small gate-frame count (8, reduced by subsampling) | Full-res 512×512×frames CSV is too heavy for the suite; full format validated on hardware (Phase 13) |
+| 2026-06-28 | FLIM IRF calibration tracked by a minimal `app.state.flim_irf_calibrated` flag | Phase 7 replaces it with a persistent calibration store |
 | 2026-06-27 | Bridge detects disconnect *passively* via an idle EOF watcher (read(1) between commands) | `/api/status` must report disconnected with no retry and no health poll; the protocol is request/response so an idle read only returns on EOF |
 | 2026-06-27 | Mock TCP server closes active connections on `stop()` and rebinds the **same port** on restart | Needed for the bridge to observe the drop and to reconnect to a stable address |
 | 2026-06-27 | Phase 2 command "queue" = protocol-client asyncio lock + instrument busy guard; formal queue deferred | Lock already serializes; busy-rejection queue + health bypass are driven by `test_13` (Phase 3) and Phase 8 |

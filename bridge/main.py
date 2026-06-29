@@ -13,7 +13,7 @@ from bridge.core.acquisition import AcquisitionRunner
 from bridge.core.instrument import InstrumentState
 from bridge.core.ws_hub import WebSocketHub
 from bridge.protocol.client import ProtocolClient
-from bridge.routes import acquire, health, system, ws
+from bridge.routes import acquire, calibration, health, system, ws
 
 
 @asynccontextmanager
@@ -36,6 +36,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.hub = hub
     app.state.instrument = instrument
     app.state.protocol = protocol
+    app.state.flim_irf_calibrated = False
 
     await protocol.start()
     sensor_size = protocol.system_info["sensor_size"] if protocol.system_info else 512
@@ -66,6 +67,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(health.router)
     app.include_router(system.router)
     app.include_router(acquire.router)
+    app.include_router(calibration.router)
     app.include_router(ws.router)
     return app
 

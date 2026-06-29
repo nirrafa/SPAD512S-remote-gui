@@ -7,6 +7,8 @@ background. Full decoding/preview/save live in the runner and services.
 """
 from __future__ import annotations
 
+import asyncio
+
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, ConfigDict
 
@@ -22,6 +24,7 @@ from bridge.protocol.decoder import (
     OptimalGated,
     parse_optimal_gated,
 )
+from bridge.services.flim import process_flim
 
 router = APIRouter(prefix="/api/acquire")
 
@@ -159,3 +162,51 @@ async def acquire_gated(request: Request, params: GatedRequest) -> dict[str, obj
             arbitrary_steps=params.arbitrary_steps,
         )
     )
+
+
+class FLIMRequest(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    calibration_type: str = "mono_exponential"
+    expected_tau_ns: float | list[float] = 4.0
+    gate_width: str = "medium"
+    integration_time_ms: float = 200.0
+    gate_subsampling: int = 1
+    output_format: str = "image"
+
+
+@router.post("/flim")
+async def acquire_flim(request: Request, params: FLIMRequest) -> dict[str, object]:
+    protocol: ProtocolClient = request.app.state.protocol
+    instrument: InstrumentState = request.app.state.instrument
+
+    if not protocol.connected:
+        return {"status": "error", "message": "vendor disconnected"}
+    if instrument.is_busy:
+        return {"status": "error", "message": "instrument busy"}
+
+    sensor = protocol.system_info["sensor_size"] if protocol.system_info else 512
+
+    await instrument.set(InstrumentStatus.ACQUIRING)
+    result: dict[str, object]
+    try:
+        text = await protocol.send_command(
+            commands.flim_acquire(
+                integration_time=params.integration_time_ms,
+                subsampling=max(params.gate_subsampling, 1),
+                raw=True,
+            )
+        )
+        result = await asyncio.to_thread(
+            process_flim, text, rows=sensor, cols=sensor, output_format=params.output_format
+        )
+    except (NotConnectedError, ProtocolError) as exc:
+        result = {"status": "error", "message": str(exc)}
+    finally:
+        await instrument.set(InstrumentStatus.IDLE)
+
+    if result.get("status") == "done" and not getattr(
+        request.app.state, "flim_irf_calibrated", False
+    ):
+        result["warning"] = "FLIM IRF not calibrated"
+    return result

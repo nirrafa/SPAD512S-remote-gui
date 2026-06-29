@@ -174,6 +174,40 @@ def parse_optimal_gated(text: str) -> OptimalGated:
     return OptimalGated(steps=steps, offset=offset, min_step=min_step)
 
 
+def decode_flim_csv(text: str, *, rows: int, cols: int) -> np.ndarray:
+    """Decode the raw-FLIM CSV response into an ``(n_gates, rows, cols)`` stack.
+
+    The vendor streams one pixel intensity per line (frames concatenated,
+    row-major), ``DONE``-terminated. ``n_gates`` is derived from the value
+    count, mirroring ``python_tcp_stream_flim.py``.
+    """
+    body = strip_done(text)
+    values = np.fromstring(body, sep="\n", dtype=np.float64)
+    frame_pixels = rows * cols
+    if frame_pixels == 0 or values.size < frame_pixels:
+        raise ValueError(f"FLIM payload too small: {values.size} values")
+    n_gates = values.size // frame_pixels
+    usable = n_gates * frame_pixels
+    return values[:usable].reshape(n_gates, rows, cols)
+
+
+def flim_phasor(frames: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """First-harmonic phasor (g, s) per pixel over the gate axis of ``frames``."""
+    n_gates = frames.shape[0]
+    theta = 2.0 * np.pi * np.arange(n_gates) / n_gates
+    total = frames.sum(axis=0)
+    total_safe = np.where(total > 0, total, 1.0)
+    g = (frames * np.cos(theta)[:, None, None]).sum(axis=0) / total_safe
+    s = (frames * np.sin(theta)[:, None, None]).sum(axis=0) / total_safe
+    return g, s
+
+
+def phasor_to_lifetime(g: np.ndarray, s: np.ndarray, *, omega: float = 1.0) -> np.ndarray:
+    """Single-exponential lifetime map from phasor coords: ``tau = (s/g)/omega``."""
+    g_safe = np.where(np.abs(g) > 1e-9, g, 1e-9)
+    return np.clip((s / g_safe) / omega, 0.0, None)
+
+
 def parse_temperatures(text: str) -> dict[str, float]:
     fields = strip_done(text).split(",")
     if len(fields) < 4:

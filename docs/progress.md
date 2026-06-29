@@ -15,7 +15,7 @@
 | 2 | Bridge core | ✅ Done | test_01 14/14, test_12 reconnect 4/9 (rest of test_12 → Phase 9) |
 | 3 | Intensity mode (vertical slice) | ✅ Done | test_02 26/26, test_13 4/5 (health-poll → Phase 8) |
 | 4 | Gated time-resolved mode | ✅ Done | 12 / 12 |
-| 5 | FLIM mode | Not started | 0 / 9 |
+| 5 | FLIM mode | ✅ Done | test_04 11/11 |
 | 6 | Raw 1-bit single-photon | Not started | 0 / 5 |
 | 7 | Calibration system | Not started | 0 / 13 |
 | 8 | Safety, health & auto-protect | Not started | 0 / 17 |
@@ -24,7 +24,7 @@
 | 11 | Front-end visualization | Not started | 0 / 12 |
 | 12 | Experiment log & presets | Not started | 0 / 16 |
 | 13 | Integration & hardware bring-up | Not started | 0 / 11 |
-| **Total** | Phases 0–4 done | | **86 / 202 pre-dev tests passing** |
+| **Total** | Phases 0–5 done | | **97 / 202 pre-dev tests passing** |
 
 > Note: the 202 collected pre-dev tests exceed the plan's original 185 estimate; per-file counts (e.g. `test_02` = 26, not 11) differ from the plan's mapping table. The remaining failures are Phases 5–13 plus the two in-scope deferrals (`test_13` health-poll → Phase 8; `test_12` sweep/disconnect → Phase 9).
 
@@ -62,6 +62,31 @@ Copy this block for each new entry. Most recent session goes on top.
 ---
 
 <!-- Add new entries below this line, most recent first -->
+
+### 2026-06-28 — Phase 5: FLIM mode
+
+**Phase(s):** 5
+**Duration:** ~2h
+**Who:** Nir + Claude
+
+#### Done
+- **Mock:** `synthetic_data.flim_decay_csv` emits the vendor raw-FLIM CSV (one int/line, frames concatenated, `DONE`-terminated); `_handle_flim` streams it for `F,i` (gate-frame count reduced by `gate_subsampling`), keeps phasor for the harness path.
+- **Bridge:** `commands.flim_calibrate`/`flim_acquire`; decoder `decode_flim_csv` + `flim_phasor` (first-harmonic g/s) + `phasor_to_lifetime`; `services/flim.py` (decode → phasor → lifetime map, downsampled g/s for transport); `routes/calibration.py` (`POST /api/calibrate/flim-irf`); `POST /api/acquire/flim` in `acquire.py` (busy-guard, warning-if-uncalibrated); `flim_irf_calibrated` app state.
+- **Front-end:** FLIM tab + `FLIMPanel` (calibration + acquire), `FLIMPage`, `PhasorScatter` (basic SVG over the semicircle), lifetime map via `ImageCanvas`.
+- **Tests:** `test_04` → 11/11. Full regression green (default 17, phases 1–4 71). ruff + mypy clean; frontend build/lint/test green. Suite writes no `./data`.
+- Manual e2e (mock+bridge): uncalibrated acquire → `done` + warning + 8 gate steps + 4096 phasor points + 256×256 lifetime map; after calibrate → no warning; `gate_subsampling=2` → 4 gate steps.
+
+#### Decisions made
+- Bridge requests raw FLIM and computes phasor/lifetime host-side; mock streams the real CSV shape but bounded (small gate-frame count); minimal `flim_irf_calibrated` flag (Phase 7 generalizes). See plan.md decisions log.
+
+#### Bugs / issues encountered
+- None blocking. Logged B-16 (mock bounded FLIM payload; full-res raw line validated on hardware in Phase 13).
+
+#### Blocked on
+- Nothing.
+
+#### Next session
+- Phase 6 (raw 1-bit) or Phase 7 (calibration system). Real-hardware FLIM validation when convenient (camera on hand).
 
 ### 2026-06-28 — Phase 4: gated time-resolved mode
 

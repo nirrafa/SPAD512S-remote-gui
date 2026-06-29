@@ -40,6 +40,27 @@ def gated_stack(width: int, bit_depth: int, n_frames: int, seed: int) -> np.ndar
     return stack
 
 
+def flim_decay_csv(rows: int, cols: int, n_gates: int, seed: int) -> bytes:
+    """Vendor raw-FLIM wire payload: ``n_gates`` frames of a per-pixel
+    exponential decay, serialized one integer per line (frames concatenated,
+    row-major), with no trailing ``DONE`` (the server appends it).
+
+    Matches ``python_tcp_stream_flim.py``: the client takes the first value of
+    each line and reshapes ``n_gates × rows × cols``. The mock keeps ``n_gates``
+    small for test speed (see docs/bugs.md); real hardware streams full frames.
+    """
+    rng = _rng(seed)
+    yy, xx = np.mgrid[0:rows, 0:cols]
+    # Per-pixel lifetime varies smoothly across the field (in gate-step units).
+    tau = 1.5 + 2.5 * (np.sin(xx / cols * np.pi) * np.cos(yy / rows * np.pi) + 1.0)
+    amplitude = 200.0
+    k = np.arange(n_gates).reshape(n_gates, 1, 1)
+    decay = amplitude * np.exp(-k / tau[None, :, :])
+    counts = rng.poisson(np.clip(decay, 0, None)).astype(np.int32)
+    flat = counts.reshape(-1)
+    return "\n".join(flat.astype(str)).encode("ascii")
+
+
 def flim_phasor(width: int, seed: int) -> tuple[np.ndarray, np.ndarray]:
     """Phasor components ``(g, s)`` for a FLIM acquisition, points on the
     universal semicircle perturbed by noise."""
