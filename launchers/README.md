@@ -1,12 +1,14 @@
 # Clickable launchers
 
-Double-click instead of typing CLI commands. Each launcher starts the **mock
-camera + bridge + web GUI** and opens your browser at `http://localhost:5173`.
+Start the **mock camera + bridge + web GUI** and open your browser at
+`http://localhost:5173`, without typing CLI commands.
 
-| File | Platform | Notes |
-|---|---|---|
-| `Start SPAD (Mock + GUI).command` | macOS | Double-click. Runs in Terminal; close the window (or Ctrl+C) to stop. |
-| `Start SPAD (Mock + GUI).bat` | Windows | Double-click. Opens three windows (mock, bridge, GUI); close them to stop. |
+| File | How to run |
+|---|---|
+| `start-spad.sh` | From a terminal: `./launchers/start-spad.sh`. Works on macOS and Linux. Ctrl+C (or close the terminal) to stop. |
+| `Start SPAD (Mock + GUI).command` | macOS Finder double-click — a thin wrapper that runs `start-spad.sh`. |
+
+Both run the same logic (`start-spad.sh` is the single source of truth).
 
 ## First-time setup (once per machine)
 
