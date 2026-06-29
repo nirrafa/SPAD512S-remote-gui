@@ -232,11 +232,19 @@ def _handle_optimal_params(args: list[str], _state: MockState) -> CommandResult:
     return CommandResult(text=text)
 
 
+_FLIM_BASE_GATES = 8
+
+
 def _handle_flim(args: list[str], state: MockState) -> CommandResult:
     sub = args[0].strip() if args else ""
     if sub.startswith("c"):
         state.flim_irf_calibrated = True
         return CommandResult(text="FLIM IRF calibration complete.")
-    # Acquisition (F,i...) or bare F: return phasor data.
-    g, s = synth.flim_phasor(64, state.seed)
-    return CommandResult(text="FLIM acquisition complete.", phasor=(g, s))
+    # Acquisition (F,i,<t>,<subsample>,<raw>,1) or bare F: stream raw-FLIM CSV.
+    subsample = _coerce_int(args[2], 1) if sub == "i" and len(args) > 2 else 1
+    n_gates = max(_FLIM_BASE_GATES // max(subsample, 1), 4)
+    wire = synth.flim_decay_csv(SENSOR_ROWS, SENSOR_ROWS, n_gates, state.seed)
+    g, s = synth.flim_phasor(64, state.seed)  # for the in-process harness path
+    return CommandResult(
+        text="FLIM acquisition complete.", wire_bytes=wire, phasor=(g, s)
+    )

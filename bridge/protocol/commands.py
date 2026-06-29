@@ -85,3 +85,13 @@ def gated(
 def optimal_gated_params(*, gate_step_size: float, gate_width: int) -> str:
     # Gf,1,<stepSize>,<gateWidth>,1
     return f"Gf,1,{gate_step_size},{gate_width},1"
+
+
+def flim_calibrate(*, mode: int, expected_tau_ns: float, gate_width: int) -> str:
+    # F,c,<mode>,<expectedLifetime>,<gateWidth>,1
+    return f"F,c,{mode},{expected_tau_ns},{gate_width},1"
+
+
+def flim_acquire(*, integration_time: float, subsampling: int, raw: bool) -> str:
+    # F,i,<intTime>,<subsampling>,<rawFlag>,1
+    return f"F,i,{integration_time},{subsampling},{1 if raw else 0},1"

@@ -1,11 +1,24 @@
 import type {
   AcquireResult,
   BridgeStatus,
+  CalibrationResult,
+  FLIMIrfParams,
+  FLIMParams,
+  FLIMResult,
   GatedParams,
   IntensityParams,
   OptimalParams,
   SystemInfo,
 } from './types'
+
+async function postJson<T>(path: string, body: unknown): Promise<T> {
+  const res = await fetch(path, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  return (await res.json()) as T
+}
 
 async function getJson<T>(path: string): Promise<T> {
   const res = await fetch(path)
@@ -41,6 +54,14 @@ export async function acquireGated(params: GatedParams): Promise<AcquireResult> 
 
 export function getOptimalParams(): Promise<OptimalParams> {
   return getJson<OptimalParams>('/api/acquire/gated/optimal-params')
+}
+
+export function calibrateFlimIrf(params: FLIMIrfParams): Promise<CalibrationResult> {
+  return postJson<CalibrationResult>('/api/calibrate/flim-irf', params)
+}
+
+export function acquireFlim(params: FLIMParams): Promise<FLIMResult> {
+  return postJson<FLIMResult>('/api/acquire/flim', params)
 }
 
 export function wsUrl(): string {
