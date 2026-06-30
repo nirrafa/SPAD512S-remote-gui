@@ -18,20 +18,28 @@ if [ ! -d ".venv" ]; then
 fi
 source .venv/bin/activate
 
-if ! command -v npm >/dev/null 2>&1; then
+# Build the GUI if npm is available; otherwise fall back to an existing build.
+# (Double-clicking in Finder can launch with a minimal PATH where npm is absent,
+# so we must not hard-depend on it when frontend/dist already exists.)
+if command -v npm >/dev/null 2>&1; then
+  echo "Building the web GUI (first run installs dependencies, ~1 min)..."
+  (
+    cd frontend || exit 1
+    [ -d node_modules ] || npm install || exit 1
+    npm run build
+  ) || echo "Build step failed; will serve the existing GUI build if present."
+else
+  echo "npm not found; will serve the existing GUI build if present."
+fi
+
+if [ ! -f frontend/dist/index.html ]; then
   echo
-  echo "npm (Node.js) not found on PATH. Install Node.js, or run this from a"
-  echo "terminal where 'npm' works, so the web GUI can be built."
+  echo "The web GUI is not built yet. Run this once from a terminal where 'npm'"
+  echo "works (e.g. your normal Terminal app) to build it:"
+  echo "  cd \"$(pwd)/frontend\" && npm install && npm run build"
   read -r -p "Press Enter to close."
   exit 1
 fi
-
-echo "Building the web GUI (first run installs dependencies, ~1 min)..."
-(
-  cd frontend || exit 1
-  [ -d node_modules ] || npm install || exit 1
-  npm run build
-) || { echo "Frontend build failed."; read -r -p "Press Enter to close."; exit 1; }
 
 open_url() {
   if command -v open >/dev/null 2>&1; then open "$1"
