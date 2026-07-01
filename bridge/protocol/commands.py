@@ -100,11 +100,16 @@ def optimal_gated_params(*, gate_step_size: float, gate_width: int) -> str:
     return f"Gf,1,{gate_step_size},{gate_width},1"
 
 
-def flim_calibrate(*, mode: int, expected_tau_ns: float, gate_width: int) -> str:
-    # F,c,<mode>,<expectedLifetime>,<gateWidth>,1
-    return f"F,c,{mode},{expected_tau_ns},{gate_width},1"
+def flim_calibrate(
+    *, mode: int, integration_time: float, expected_tau_ns: float, gate_width: int
+) -> str:
+    # F,c<mode>,<intTime>,<expTau>,<gateWidth>  — NOTE the vendor uses no comma
+    # between "c" and <mode> (see cSPAD.py calib_FLIM and learnings.md "FLIM
+    # command format quirk"). The two vendor reference files disagree on this;
+    # this follows cSPAD.py — validate on real hardware (Phase 13 / see B-17).
+    return f"F,c{mode},{integration_time},{expected_tau_ns},{gate_width}"
 
 
 def flim_acquire(*, integration_time: float, subsampling: int, raw: bool) -> str:
-    # F,i,<intTime>,<subsampling>,<rawFlag>,1
-    return f"F,i,{integration_time},{subsampling},{1 if raw else 0},1"
+    # F,i<intTime>,<subsampling>,<rawFlag>  — no comma between "i" and <intTime>.
+    return f"F,i{integration_time},{subsampling},{1 if raw else 0}"

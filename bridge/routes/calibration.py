@@ -41,6 +41,7 @@ class FlimIrfRequest(BaseModel):
     calibration_type: str = "mono_exponential"
     expected_tau_ns: float | list[float] = 4.0
     gate_width: str = "medium"
+    integration_time_ms: float = 1000.0
 
 
 @router.post("/flim-irf")
@@ -50,6 +51,8 @@ async def calibrate_flim_irf(request: Request, params: FlimIrfRequest) -> dict[s
 
     if not protocol.connected:
         return {"status": "error", "message": "vendor disconnected"}
+    if instrument.is_busy:
+        return {"status": "error", "message": "instrument busy"}
 
     mode = _CALIBRATION_MODE.get(params.calibration_type, 0)
     gate_width = _GATE_WIDTH_CODE.get(params.gate_width, 1)
@@ -59,7 +62,12 @@ async def calibrate_flim_irf(request: Request, params: FlimIrfRequest) -> dict[s
     await instrument.set(InstrumentStatus.CALIBRATING)
     try:
         await protocol.send_command(
-            commands.flim_calibrate(mode=mode, expected_tau_ns=tau_value, gate_width=gate_width)
+            commands.flim_calibrate(
+                mode=mode,
+                integration_time=params.integration_time_ms,
+                expected_tau_ns=tau_value,
+                gate_width=gate_width,
+            )
         )
     except (NotConnectedError, ProtocolError) as exc:
         return {"status": "error", "message": str(exc)}
@@ -81,6 +89,8 @@ async def _run_calibration(request: Request, kind: str) -> dict[str, object]:
 
     if not protocol.connected:
         return {"status": "error", "message": "vendor disconnected"}
+    if instrument.is_busy:
+        return {"status": "error", "message": "instrument busy"}
 
     store.mark_running(kind)
     await instrument.set(InstrumentStatus.CALIBRATING)
@@ -165,16 +175,18 @@ async def dcr_curve(request: Request) -> dict[str, object]:
     try:
         await protocol.send_command(commands.pileup(False))
         data = await protocol.send_acquire(command, expected_bytes=expected)
+        stack = await asyncio.to_thread(
+            decode_intensity,
+            data,
+            bit_depth=_DCR_BIT_DEPTH,
+            rows=rows,
+            im_width=_DCR_ROI_WIDTH,
+            iterations=1,
+            pileup=False,
+        )
     except (NotConnectedError, ProtocolError) as exc:
         return {"status": "error", "message": str(exc)}
+    except ValueError as exc:
+        return {"status": "error", "message": f"DCR decode failed: {exc}"}
 
-    stack = await asyncio.to_thread(
-        decode_intensity,
-        data,
-        bit_depth=_DCR_BIT_DEPTH,
-        rows=rows,
-        im_width=_DCR_ROI_WIDTH,
-        iterations=1,
-        pileup=False,
-    )
     return _dcr_curve(stack[0].reshape(-1))
