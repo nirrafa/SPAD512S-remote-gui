@@ -67,6 +67,67 @@ index). Every new hand-indexed arg is a fresh opportunity for the same bug.
 **Suggested fix:** Extract `arg_int(args, n, default)` collapsing the length check
 and coercion into one call; convert the existing sites.
 
+### B-21 — `/api/acquire/stop` is cosmetic; no safe-boundary abort · S1/S2
+
+**Where:** [`bridge/routes/acquire.py`](../bridge/routes/acquire.py) `stop`, [`bridge/core/acquisition.py`](../bridge/core/acquisition.py).
+**Mechanism:** `stop` sets `stop_requested` then forces `IDLE`, but the running
+background acquisition task is never cancelled and the runner never reads
+`stop_requested` (grep: unused in the runner). So a stop flips the busy flag while
+the task still streams → a second acquire can start and issue a second command onto
+the socket → protocol desync. Violates constraints.md "stop must respect safe
+boundaries; in-flight frames finish".
+**Deferred:** entangled with Phase 8 auto-protect / Phase 9 safe-boundary stop — fix
+as part of that work (runner consults `stop_requested` between iterations/gate steps;
+`stop` observes the task rather than blindly setting IDLE).
+
+### B-22 — `flim_irf_calibrated` global flag never goes stale · S2
+
+**Where:** [`bridge/main.py`](../bridge/main.py), [`bridge/routes/calibration.py`](../bridge/routes/calibration.py), [`bridge/routes/acquire.py`](../bridge/routes/acquire.py).
+**Mechanism:** Once any FLIM IRF calibration runs, every later FLIM acquire is
+treated as calibrated forever — the flag survives Vex changes and reconnects, so the
+"IRF not calibrated" safety warning is wrongly suppressed. The `CalibrationStore`
+already models staleness for the other kinds; FLIM IRF is the odd one out.
+**Suggested fix:** fold FLIM IRF into `CalibrationStore` with a stale-on-Vex-change /
+clear-on-reconnect rule (aligns with the Phase 13 staleness work).
+
+### B-23 — raw-1bit validates a `roi_width` the 1-bit path ignores · S2 (minor)
+
+**Where:** [`bridge/routes/acquire.py`](../bridge/routes/acquire.py) raw-1bit, `decoder.decode_intensity` 1-bit path.
+**Mechanism:** raw-1bit validates `roi_width` against the valid list, but the 1-bit
+decode always uses `rows*rows//8` → full 512×512. A user picking `roi_width=256`
+silently gets a full frame. **Suggested fix:** reject non-512 width for 1-bit, or drop
+`roi_width` from the raw-1bit request model.
+
+### B-24 — intensity vs gated disagree on integration-time precedence · S3
+
+**Where:** [`bridge/routes/acquire.py`](../bridge/routes/acquire.py) `IntensityRequest.resolved_integration_time` vs `GatedRequest.resolved_integration_time`.
+**Mechanism:** intensity prefers `integration_time` over `integration_time_ms`; gated
+prefers the opposite. A caller sending both gets different behavior per endpoint.
+**Suggested fix:** one shared precedence helper.
+
+### B-25 — `_read_binary` premature-DONE on exact-length payloads ending in `DONE` bytes · S2 (edge)
+
+**Where:** [`bridge/protocol/client.py`](../bridge/protocol/client.py) `_read_binary`.
+**Mechanism:** termination fires on `buffer.endswith(b"DONE") and len >= target`. If
+real 2-byte pixel data ends in the ASCII bytes `DONE` exactly at the
+`expected_bytes+4` boundary before the true trailing sentinel arrives, the read stops
+4 bytes early → spurious length-mismatch `ProtocolError`. Data-dependent, low
+probability. **Suggested fix:** when `expected_bytes` is known, read exactly `target`
+and verify the last 4 are `DONE`; sentinel-scan only for the unknown-length/error case.
+
+### B-26 — dead `'busy'` status branch in the front-end · S3 (nitpick)
+
+**Where:** [`frontend/src/hooks/useAcquisition.ts`](../frontend/src/hooks/useAcquisition.ts), `AcquireResult` in `api/types.ts`.
+**Mechanism:** checks `result.status === 'busy'`, but the bridge returns busy as
+`{"status":"error","message":"instrument busy"}`; the `'busy'` variant is never
+emitted. Harmless (falls through to the error branch). **Suggested fix:** drop
+`'busy'` from the union + check, or make the bridge emit it.
+
+> **Test coverage gap (from both reviews):** there are no bridge-level tests for
+> gated, FLIM, raw-1bit, calibration, `/api/acquire/stop`, or the busy guard — only
+> plain 8-bit intensity + status + reconnect. B-18 in particular would be caught by a
+> single "calibration rejected while acquiring" test. Address alongside Phase 8/9.
+
 ---
 
 ## Fixed
@@ -84,6 +145,10 @@ and coercion into one call; convert the existing sites.
 | B-13 | S2 | A vendor `ERROR` reply to a text command was returned as a normal string → downstream parser raised `ValueError` (HTTP 500). `send_command` now raises `ProtocolError`; `/api/system/triggers` returns 502. | Phase 2 review fixes | covered by `ProtocolError` path |
 | B-14 | S3 | Default-suite `client` fixture built the app on vendor port 9999 with no mock, so tests could connect to a stray dev mock. Now uses an unused ephemeral port. | Phase 2 review fixes | n/a (isolation) |
 | B-15 | S2 | Bridge test fixtures left `data_root` at its default `"data"`, so every acquisition test (and manual run) wrote a real multi-frame `.npy` into the shared `./data` tree and never cleaned up — 320 folders / 3.3 GB accumulated. Fixtures now set `data_root=str(tmp_path)` (per-test temp dir). | this session | `tests/test_bridge_api.py`, `pre_dev_tests/conftest.py`, `tests/conftest.py` fixtures + verified `./data` is not recreated by the suite |
+| B-17 | S1 | FLIM command builders used the wrong wire format — `F,c,<mode>,…` / `F,i,<int>,…` (comma after the letter) and `flim_calibrate` omitted `intTime`. `cSPAD.py` (and learnings.md) use **no comma** after `c`/`i` and include `intTime`: `F,c<mode>,<intTime>,<expTau>,<gateWidth>` / `F,i<intTime>,<sub>,<raw>`. Mock + bridge agreed on the wrong format so tests passed but real hardware would mis-parse. Aligned to `cSPAD.py`; mock parser updated. **Note:** the two vendor references disagree (`python_tcp_stream_flim.py` uses the comma form) — must be validated on the real camera (Phase 13). | this session | `test_04`/`test_07`/`test_14` green post-change |
+| B-18 | S1 | Calibration endpoints (`/api/calibrate/*`, incl. `flim-irf`) set `CALIBRATING` with no `is_busy` guard, so a calibration launched during an acquisition overwrote instrument state, contended for the single TCP socket, and its `finally: set(IDLE)` dropped the busy flag mid-acquisition. Added an atomic `is_busy` check to every calibration entry point. | this session | (add regression test — see coverage gaps) |
+| B-19 | S2 | `/api/acquire/flim` and `/api/calibration/dcr-curve` only caught `NotConnectedError`/`ProtocolError`; a short/garbled payload raising `ValueError` from the decoder escaped as HTTP 500. Both now catch `ValueError` and return `{"status":"error",…}`. | this session | (add regression test) |
+| B-20 | S1 | Front-end WebSocket never reconnected (`onclose` only flagged disconnected) → the GUI silently froze after any bridge restart/LAN blip; `onmessage` did an unguarded `JSON.parse`; `postJson`/acquire fetches ignored non-OK responses. Added exponential-backoff reconnect, a `JSON.parse` try/catch, and `res.ok` checks (acquire calls now route through `postJson`). | this session | frontend build/lint/test green |
 
 ---
 

@@ -250,6 +250,8 @@ async def acquire_flim(request: Request, params: FLIMRequest) -> dict[str, objec
         )
     except (NotConnectedError, ProtocolError) as exc:
         result = {"status": "error", "message": str(exc)}
+    except ValueError as exc:
+        result = {"status": "error", "message": f"FLIM decode failed: {exc}"}
     finally:
         await instrument.set(InstrumentStatus.IDLE)
 

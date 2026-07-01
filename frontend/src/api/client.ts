@@ -21,6 +21,10 @@ async function postJson<T>(path: string, body: unknown): Promise<T> {
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(body),
   })
+  if (!res.ok) {
+    const detail = await res.text().catch(() => '')
+    throw new Error(`${path} -> ${res.status}${detail ? `: ${detail}` : ''}`)
+  }
   return (await res.json()) as T
 }
 
@@ -38,31 +42,16 @@ export function getSystemInfo(): Promise<SystemInfo> {
   return getJson<SystemInfo>('/api/system/info')
 }
 
-export async function acquireIntensity(params: IntensityParams): Promise<AcquireResult> {
-  const res = await fetch('/api/acquire/intensity', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(params),
-  })
-  return (await res.json()) as AcquireResult
+export function acquireIntensity(params: IntensityParams): Promise<AcquireResult> {
+  return postJson<AcquireResult>('/api/acquire/intensity', params)
 }
 
-export async function acquireRaw1Bit(params: Raw1BitParams): Promise<AcquireResult> {
-  const res = await fetch('/api/acquire/raw-1bit', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(params),
-  })
-  return (await res.json()) as AcquireResult
+export function acquireRaw1Bit(params: Raw1BitParams): Promise<AcquireResult> {
+  return postJson<AcquireResult>('/api/acquire/raw-1bit', params)
 }
 
-export async function acquireGated(params: GatedParams): Promise<AcquireResult> {
-  const res = await fetch('/api/acquire/gated', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(params),
-  })
-  return (await res.json()) as AcquireResult
+export function acquireGated(params: GatedParams): Promise<AcquireResult> {
+  return postJson<AcquireResult>('/api/acquire/gated', params)
 }
 
 export function getOptimalParams(): Promise<OptimalParams> {
