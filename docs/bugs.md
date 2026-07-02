@@ -67,19 +67,6 @@ index). Every new hand-indexed arg is a fresh opportunity for the same bug.
 **Suggested fix:** Extract `arg_int(args, n, default)` collapsing the length check
 and coercion into one call; convert the existing sites.
 
-### B-21 — `/api/acquire/stop` is cosmetic; no safe-boundary abort · S1/S2
-
-**Where:** [`bridge/routes/acquire.py`](../bridge/routes/acquire.py) `stop`, [`bridge/core/acquisition.py`](../bridge/core/acquisition.py).
-**Mechanism:** `stop` sets `stop_requested` then forces `IDLE`, but the running
-background acquisition task is never cancelled and the runner never reads
-`stop_requested` (grep: unused in the runner). So a stop flips the busy flag while
-the task still streams → a second acquire can start and issue a second command onto
-the socket → protocol desync. Violates constraints.md "stop must respect safe
-boundaries; in-flight frames finish".
-**Deferred:** entangled with Phase 8 auto-protect / Phase 9 safe-boundary stop — fix
-as part of that work (runner consults `stop_requested` between iterations/gate steps;
-`stop` observes the task rather than blindly setting IDLE).
-
 ### B-22 — `flim_irf_calibrated` global flag never goes stale · S2
 
 **Where:** [`bridge/main.py`](../bridge/main.py), [`bridge/routes/calibration.py`](../bridge/routes/calibration.py), [`bridge/routes/acquire.py`](../bridge/routes/acquire.py).
@@ -149,6 +136,7 @@ emitted. Harmless (falls through to the error branch). **Suggested fix:** drop
 | B-18 | S1 | Calibration endpoints (`/api/calibrate/*`, incl. `flim-irf`) set `CALIBRATING` with no `is_busy` guard, so a calibration launched during an acquisition overwrote instrument state, contended for the single TCP socket, and its `finally: set(IDLE)` dropped the busy flag mid-acquisition. Added an atomic `is_busy` check to every calibration entry point. | this session | (add regression test — see coverage gaps) |
 | B-19 | S2 | `/api/acquire/flim` and `/api/calibration/dcr-curve` only caught `NotConnectedError`/`ProtocolError`; a short/garbled payload raising `ValueError` from the decoder escaped as HTTP 500. Both now catch `ValueError` and return `{"status":"error",…}`. | this session | (add regression test) |
 | B-20 | S1 | Front-end WebSocket never reconnected (`onclose` only flagged disconnected) → the GUI silently froze after any bridge restart/LAN blip; `onmessage` did an unguarded `JSON.parse`; `postJson`/acquire fetches ignored non-OK responses. Added exponential-backoff reconnect, a `JSON.parse` try/catch, and `res.ok` checks (acquire calls now route through `postJson`). | this session | frontend build/lint/test green |
+| B-21 | S1 | `/api/acquire/stop` was cosmetic: it set `stop_requested` then forced `IDLE` while the acquisition task kept streaming → busy guard dropped mid-run, protocol desync possible. Phase 8 made multi-iteration acquisitions run in batches; the runner honors `stop_requested` at batch boundaries and records `abort_reason`; `GET /api/acquire/status` reports state + reason. | Phase 8 (PR #6) | `test_08` `TestAutoProtect` (auto-abort on over-temperature) |
 
 ---
 
