@@ -100,15 +100,21 @@ class MockVendorServer:
         self._loop = None
         time.sleep(0.3)  # allow a connected bridge to observe the EOF
 
-    # Convenience pass-throughs for fault-injection in later phases.
-    def set_temperature(self, **kwargs: float) -> None:
-        self.state.set_temperature(**kwargs)
+    # Convenience pass-throughs for fault-injection.
+    def set_temperature(self, sensor: str, value: float) -> None:
+        self.state.set_temperature(**{sensor: value})
 
-    def set_voltage(self, vex: float) -> None:
-        self.state.set_voltage(vex)
+    def set_cooling(self, active: bool) -> None:
+        self.state.cooling_enabled = active
+
+    def set_voltage(self, target: str, value: float) -> None:
+        self.state.set_voltage(target, value)
 
     def set_laser_frequency(self, freq: float) -> None:
         self.state.set_laser_frequency(freq)
+
+    def simulate_overexposure(self) -> None:
+        self.state.simulate_overexposure()
 
     def fail_after_n_commands(self, n: int) -> None:
         self.state.fail_after_n_commands(n)

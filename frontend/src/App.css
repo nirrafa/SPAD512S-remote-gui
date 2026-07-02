@@ -222,3 +222,62 @@ header h1 {
   max-width: 420px;
   color: #888;
 }
+
+.gauges {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 0.6rem;
+  margin: 0.5rem 0 1rem;
+}
+.gauge {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  background: #1b1b1b;
+  border: 1px solid #333;
+  border-radius: 6px;
+  padding: 0.6rem 0.8rem;
+}
+.gauge-alarm {
+  border-color: #c0392b;
+  background: #2a1717;
+}
+.gauge-label {
+  font-size: 0.75rem;
+  color: #888;
+}
+.gauge-value {
+  font-size: 1.2rem;
+  color: #eee;
+}
+
+.alarms {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+.alarms-clear {
+  color: #6a9;
+}
+.alarm {
+  display: flex;
+  justify-content: space-between;
+  padding: 0.5rem 0.8rem;
+  border-radius: 6px;
+  border: 1px solid #333;
+}
+.alarm-warning {
+  background: #2a2417;
+  border-color: #b8860b;
+}
+.alarm-critical {
+  background: #2a1717;
+  border-color: #c0392b;
+}
+.vex-notice {
+  margin-top: 0.6rem;
+  color: #d8a657;
+}

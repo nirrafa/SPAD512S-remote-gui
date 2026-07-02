@@ -37,6 +37,7 @@ class MockState:
     # Toggles
     cooling_enabled: bool = True
     pileup_correction: bool = False
+    overexposed: bool = False
 
     # Calibration status flags
     breakdown_calibrated: bool = False
@@ -67,11 +68,16 @@ class MockState:
         if pcb is not None:
             self.t_pcb = pcb
 
-    def set_voltage(self, vex: float) -> None:
-        self.vex = vex
+    def set_voltage(self, target: str, value: float) -> None:
+        if target not in ("vex", "vq"):
+            raise ValueError(f"unknown voltage target: {target!r}")
+        setattr(self, target, value)
 
     def set_laser_frequency(self, freq: float) -> None:
         self.laser_freq = freq
+
+    def simulate_overexposure(self) -> None:
+        self.overexposed = True
 
     def fail_after_n_commands(self, n: int) -> None:
         self._fail_after = n

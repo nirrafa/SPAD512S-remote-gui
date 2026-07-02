@@ -18,15 +18,15 @@
 | 5 | FLIM mode | ✅ Done | test_04 11/11 |
 | 6 | Raw 1-bit single-photon | ✅ Done | test_05 5/5 |
 | 7 | Calibration system | ✅ Done | test_07 13/13 |
-| 8 | Safety, health & auto-protect | Not started | 0 / 17 |
+| 8 | Safety, health & auto-protect | ✅ Done | test_08 17/17, test_13 5/5 (health-poll resolved) |
 | 9 | Sweeps, scheduling & resilience | Not started | 0 / 18 |
 | 10 | Data handling & reducer | Not started | 0 / 18 |
 | 11 | Front-end visualization | Not started | 0 / 12 |
 | 12 | Experiment log & presets | Not started | 0 / 16 |
 | 13 | Integration & hardware bring-up | Not started | 0 / 11 |
-| **Total** | Phases 0–7 done | | **115 / 202 pre-dev tests passing** |
+| **Total** | Phases 0–8 done | | **151 / 202 pre-dev tests passing** |
 
-> Note: the 202 collected pre-dev tests exceed the plan's original 185 estimate; per-file counts (e.g. `test_02` = 26, not 11) differ from the plan's mapping table. The remaining failures are Phases 5–13 plus the two in-scope deferrals (`test_13` health-poll → Phase 8; `test_12` sweep/disconnect → Phase 9).
+> Note: the 202 collected pre-dev tests exceed the plan's original 185 estimate; per-file counts (e.g. `test_02` = 26, not 11) differ from the plan's mapping table. The remaining failures are Phases 9–13; the prior in-scope deferral `test_13` health-poll is now resolved (Phase 8). `test_12` sweep/disconnect remains → Phase 9.
 
 ---
 
@@ -62,6 +62,34 @@ Copy this block for each new entry. Most recent session goes on top.
 ---
 
 <!-- Add new entries below this line, most recent first -->
+
+### 2026-06-30 — Phase 8: Safety, health & auto-protect
+
+**Phase(s):** 8
+**Duration:** ~1.5h
+**Who:** Nir + Claude (parallel agent)
+
+#### Done
+- **Mock:** `MockState.overexposed` flag; harness hooks `set_temperature(sensor,value)`, `set_cooling(active)`, `set_voltage(target,value)`, `simulate_overexposure()` (positional signatures the spec calls). Extended the `R` readout to append `cooling,saturated` (`t_master,…,frame,cooling,saturated`) so a single health poll covers everything; `parse_readout` (indices 4/5) and `test_01` unaffected.
+- **Bridge:** `decoder.parse_health` / `parse_voltages`; `services/health.py` `HealthMonitor` (cached `Readings` + `HealthConfig`, background poll loop, alarm engine, auto-protect). Poll gates on `instrument.is_busy` and falls back to cached readings; the runner calls `poll(force=True)` at batch boundaries.
+- **Bridge:** `instrument.request_stop(reason)` stores `abort_reason` (in `snapshot()`). `acquisition.py` now batches multi-iteration intensity runs (`BATCH_SIZE=10`): between batches the socket is idle → health poll + `stop_requested` check; on trip it ends early with `status:"aborted"` + `abort_reason`.
+- **Bridge routes:** `GET /api/health/readings`, `GET/PUT /api/health/config`, `POST /api/settings/vex` (high Vex → `{requires_confirmation:true}`), `GET /api/acquire/status` (`state` + `abort_reason`). Alarms broadcast over WS via `broadcast_alarm` (new types only).
+- **Front-end:** `HealthPage` + `TemperatureGauge` / `AlarmBanner` / `ThresholdConfig`; "Health" tab; api client/types extended.
+- **Tests:** `test_08` 17/17; full regression set green (tests/, test_01/02/05/07 = 92 passing; test_03/04/13/14 = 47 passing, incl. the previously-deferred `test_13` health-poll). ruff + mypy clean; frontend build/lint/test green. Overall pre-dev 115 → 151 passing, no regressions.
+
+#### Decisions made
+- Auto-protect lives in `HealthMonitor` rather than a separate `core/auto_protect.py` — one owner of the read→evaluate→protect cycle.
+- Auto-abort needs a mid-acquisition safe boundary on a single socket, so intensity runs are **batched** and health is polled between batches (`poll(force=True)`). `/api/acquire/status` briefly waits (≤~0.24s) for the next boundary so a just-tripped threshold is reflected rather than the instant before it.
+- Added a `put()` passthrough to the `BridgeTestClient` fixture (it had only `get`/`post`); the spec's `PUT /api/health/config` test cannot run without it. No change to the temp-dir data routing.
+
+#### Bugs / issues encountered
+- `_idle_watch` could `assert self._reader is not None` and surface an unretrieved-task `AssertionError` under the extra concurrent R/V health traffic (disconnect raced the watcher start). Made it return gracefully when `_reader is None`.
+
+#### Blocked on
+- Nothing.
+
+#### Next session
+- Phase 9 (sweeps, scheduling, resilience): `test_12` sweep/disconnect + `test_06`/`test_09` remaining.
 
 ### 2026-06-29 — Phase 7: Calibration system
 

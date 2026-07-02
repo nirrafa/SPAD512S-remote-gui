@@ -9,10 +9,13 @@ import type {
   FLIMParams,
   FLIMResult,
   GatedParams,
+  HealthConfig,
+  HealthReadings,
   IntensityParams,
   OptimalParams,
   Raw1BitParams,
   SystemInfo,
+  VexResult,
 } from './types'
 
 async function postJson<T>(path: string, body: unknown): Promise<T> {
@@ -88,6 +91,29 @@ export function calibrateDeadPixel(): Promise<CalibrationStepResult> {
 
 export function calibrateMasterSlaveOffset(): Promise<CalibrationStepResult> {
   return postJson<CalibrationStepResult>('/api/calibrate/master-slave-offset', {})
+}
+
+export function getHealthReadings(): Promise<HealthReadings> {
+  return getJson<HealthReadings>('/api/health/readings')
+}
+
+export function getHealthConfig(): Promise<HealthConfig> {
+  return getJson<HealthConfig>('/api/health/config')
+}
+
+export async function updateHealthConfig(
+  update: Partial<HealthConfig>,
+): Promise<{ status: string }> {
+  const res = await fetch('/api/health/config', {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(update),
+  })
+  return (await res.json()) as { status: string }
+}
+
+export function setVex(vex: number, confirm = false): Promise<VexResult> {
+  return postJson<VexResult>('/api/settings/vex', { vex, confirm })
 }
 
 export function wsUrl(): string {

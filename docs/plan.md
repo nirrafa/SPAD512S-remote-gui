@@ -489,43 +489,48 @@ frontend/src/components/
 
 ### Tasks
 
-- [ ] Bridge: health poller background task
-  - Poll `R` (temps + freq), `V` (voltages), `S` (cooling) on configurable interval
+- [x] Bridge: health poller background task
+  - Poll `R` (temps + freq + cooling/saturated) + `V` (voltages) on configurable interval
   - Store latest readings
-  - Do not interleave with in-flight acquisitions (wait for idle or use read-only bypass)
-- [ ] Bridge: alarm evaluation engine
-  - Over-temperature (per sensor, configurable thresholds)
+  - Do not interleave with in-flight acquisitions: poll gates on `instrument.is_busy` and falls back to cached readings; the runner calls `poll(force=True)` at batch boundaries
+- [x] Bridge: alarm evaluation engine
+  - Over-temperature (chip threshold, configurable)
   - Cooling failure/disabled
   - Missing laser trigger (freq ≈ 0)
   - Abnormal laser trigger (freq outside expected range)
-  - Suspected overexposure (pixel saturation metric)
-- [ ] Bridge: auto-protect actions
-  - Abort acquisition on threshold breach
-  - Optionally reduce Vex to safe value
+  - Suspected overexposure (mock saturation flag)
+- [x] Bridge: auto-protect actions
+  - Abort acquisition on chip over-temp (`request_stop("over_temperature")`)
+  - Reduce Vex to safe value (`vex_reduced` flag + alarm above `vex_max`)
   - Require confirmation for high Vex settings
-- [ ] Bridge: health REST + WebSocket
+- [x] Bridge: health REST + WebSocket
   - `GET /api/health/readings` — latest temps, voltages, cooling, freqs, alarms
   - `GET /api/health/config` — current thresholds
   - `PUT /api/health/config` — update thresholds
   - `POST /api/settings/vex` — set Vex with confirmation requirement
-  - Alarms broadcast over WebSocket to all clients
-- [ ] Front-end: health dashboard
+  - `GET /api/acquire/status` — state + abort_reason
+  - Alarms broadcast over WebSocket to all clients (`broadcast_alarm`, new types only)
+- [x] Front-end: health dashboard
   - Temperature gauges / readouts
   - Voltage display
   - Cooling status
   - Alarm list with severity levels
   - Threshold configuration form
-  - Alarm toast/notification overlay
+  - Vex set with high-value confirmation
 
 ### Files (new/modified)
 
 ```
 bridge/services/
-    └── health.py            # Health poller + alarm engine
-bridge/core/
-    └── auto_protect.py      # Auto-protect logic (abort, reduce bias)
+    └── health.py            # HealthMonitor: poller + alarm engine + auto-protect
 bridge/routes/
-    └── health.py            # Health REST endpoints
+    └── health.py            # Health/settings REST endpoints (+ /api/acquire/status)
+bridge/core/
+    ├── acquisition.py       # batched intensity loop (poll + abort at boundaries)
+    └── instrument.py        # request_stop(reason) + abort_reason in snapshot
+bridge/protocol/decoder.py   # parse_health / parse_voltages
+
+mock_server/{state,protocol,harness}.py  # overexposed flag, extended R readout, new hooks
 
 frontend/src/pages/
     └── HealthPage.tsx
@@ -535,14 +540,18 @@ frontend/src/components/
     └── ThresholdConfig.tsx
 ```
 
+> Auto-protect lives in `HealthMonitor` (alongside the readings it acts on)
+> rather than a separate `auto_protect.py` — fewer moving parts, one owner of the
+> read→evaluate→protect cycle.
+
 ### Validation gate
 
-- [ ] `pre_dev_tests/test_08_safety_and_health.py` — all 17 tests pass
-- [ ] Health readings update on interval
-- [ ] Mock server: set chip temp to 85°C → alarm fires → WebSocket receives alarm
-- [ ] Running acquisition + over-temp → acquisition aborts with reason
-- [ ] Health polling continues during acquisition
-- [ ] High Vex setting → confirmation required
+- [x] `pre_dev_tests/test_08_safety_and_health.py` — all 17 tests pass
+- [x] Health readings update on interval (background poll loop, `poll_interval_s`)
+- [x] Mock server: set chip temp to 85°C → alarm fires → WebSocket receives alarm
+- [x] Running acquisition + over-temp → acquisition aborts with reason
+- [x] Health polling continues during acquisition (cached readings while busy)
+- [x] High Vex setting → confirmation required
 
 ---
 

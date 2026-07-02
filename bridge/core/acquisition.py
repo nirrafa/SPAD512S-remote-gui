@@ -9,6 +9,7 @@ rejected as *busy* while the first is still in flight.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 from typing import Any
 
 from bridge.core.instrument import InstrumentState, InstrumentStatus
@@ -28,6 +29,12 @@ from bridge.services.preview import make_preview
 # large multi-frame acquisition is reliably still in flight, large enough that
 # typical single/few-frame acquisitions return `done` synchronously.
 RESULT_GRACE_S = 0.3
+
+# Multi-iteration intensity acquisitions are sent in batches so the socket
+# returns to idle between batches — a safe boundary where health polling can run
+# and auto-protect can abort mid-acquisition (the single TCP socket can't be
+# polled mid-stream).
+BATCH_SIZE = 10
 
 
 class IntensityParams:
@@ -106,6 +113,8 @@ class AcquisitionRunner:
         self._data_root = data_root
         self._sensor_size = sensor_size
         self.current: dict[str, Any] | None = None
+        # Set after construction (the monitor depends on the runner's siblings).
+        self.health_monitor: Any | None = None
 
     async def run_intensity(self, params: IntensityParams) -> dict[str, Any]:
         if self._instrument.is_busy:
@@ -128,23 +137,16 @@ class AcquisitionRunner:
     async def _intensity_op(self, params: IntensityParams) -> dict[str, Any]:
         rows = self._sensor_size
         unit = integration_time_unit(params.bit_depth)
-        expected = params.iterations * bytes_per_frame(
-            params.bit_depth, rows, params.roi_width, params.pileup_correction
-        )
-        command = commands.intensity(
-            bit_depth=params.bit_depth,
-            integration_time=params.integration_time,
-            iterations=params.iterations,
-            overlap=params.overlap,
-            im_width=params.roi_width,
-        )
 
         result: dict[str, Any]
         try:
-            data = await self._acquire_io(params, command, expected)
+            data, completed, aborted = await self._acquire_io(params)
             result = await asyncio.to_thread(
-                self._postprocess, data, params, rows, unit
+                self._postprocess, data, params, rows, unit, completed
             )
+            if aborted:
+                result["status"] = "aborted"
+                result["abort_reason"] = self._instrument.abort_reason
         except TimeoutError:
             await self._protocol.reset()
             result = {"status": "timeout", "message": "acquisition timed out"}
@@ -158,11 +160,55 @@ class AcquisitionRunner:
 
         if self.current is not None:
             self.current["result"] = result
-        if result.get("status") == "done":
+        if result.get("status") in ("done", "aborted") and "preview" in result:
             await self._hub.broadcast_preview(result["preview"])
         return result
 
     async def _acquire_io(
+        self, params: IntensityParams
+    ) -> tuple[bytes, int, bool]:
+        """Run the acquisition, batching multi-iteration runs.
+
+        Returns ``(data, completed_iterations, aborted)``. Between batches the
+        socket is idle (a safe boundary): health polling runs and, if
+        auto-protect requested a stop, the run ends early with ``aborted=True``.
+        """
+        rows = self._sensor_size
+        per_frame = bytes_per_frame(
+            params.bit_depth, rows, params.roi_width, params.pileup_correction
+        )
+
+        if params.iterations <= BATCH_SIZE:
+            command = self._intensity_command(params, params.iterations)
+            data = await self._send_acquire(
+                params, command, params.iterations * per_frame
+            )
+            return data, params.iterations, False
+
+        chunks: list[bytes] = []
+        completed = 0
+        aborted = False
+        for start in range(0, params.iterations, BATCH_SIZE):
+            batch = min(BATCH_SIZE, params.iterations - start)
+            command = self._intensity_command(params, batch)
+            chunks.append(await self._send_acquire(params, command, batch * per_frame))
+            completed += batch
+            await self._poll_health()
+            if self._instrument.stop_requested:
+                aborted = True
+                break
+        return b"".join(chunks), completed, aborted
+
+    def _intensity_command(self, params: IntensityParams, iterations: int) -> str:
+        return commands.intensity(
+            bit_depth=params.bit_depth,
+            integration_time=params.integration_time,
+            iterations=iterations,
+            overlap=params.overlap,
+            im_width=params.roi_width,
+        )
+
+    async def _send_acquire(
         self, params: IntensityParams, command: str, expected: int
     ) -> bytes:
         async def _io() -> bytes:
@@ -173,15 +219,20 @@ class AcquisitionRunner:
             return await asyncio.wait_for(_io(), params.timeout_s)
         return await _io()
 
+    async def _poll_health(self) -> None:
+        if self.health_monitor is not None:
+            with contextlib.suppress(Exception):
+                await self.health_monitor.poll(force=True)
+
     def _postprocess(
-        self, data: bytes, params: IntensityParams, rows: int, unit: str
+        self, data: bytes, params: IntensityParams, rows: int, unit: str, completed: int
     ) -> dict[str, Any]:
         stack = decode_intensity(
             data,
             bit_depth=params.bit_depth,
             rows=rows,
             im_width=params.roi_width,
-            iterations=params.iterations,
+            iterations=completed,
             pileup=params.pileup_correction,
         )
         preview = make_preview(stack[0])
@@ -190,7 +241,7 @@ class AcquisitionRunner:
             "status": "done",
             "preview": preview,
             "host_path": host_path,
-            "total_frames": params.iterations,
+            "total_frames": completed,
             "integration_time_unit": unit,
             "bytes": len(data),
         }

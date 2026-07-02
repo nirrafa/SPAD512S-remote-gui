@@ -25,6 +25,7 @@ class InstrumentState:
         self._status = InstrumentStatus.IDLE
         self._on_change = on_change
         self._stop_requested = False
+        self._abort_reason: str | None = None
 
     @property
     def status(self) -> InstrumentStatus:
@@ -38,17 +39,28 @@ class InstrumentState:
     def stop_requested(self) -> bool:
         return self._stop_requested
 
+    @property
+    def abort_reason(self) -> str | None:
+        return self._abort_reason
+
     async def set(self, status: InstrumentStatus) -> None:
         self._status = status
         if status == InstrumentStatus.IDLE:
             self._stop_requested = False
+            self._abort_reason = None
         if self._on_change is not None:
             await self._on_change(self)
 
-    async def request_stop(self) -> None:
+    async def request_stop(self, reason: str | None = None) -> None:
         self._stop_requested = True
+        if reason is not None:
+            self._abort_reason = reason
         if self.is_busy:
             await self.set(InstrumentStatus.STOPPING)
 
     def snapshot(self) -> dict[str, object]:
-        return {"instrument_state": self._status.value, "stop_requested": self._stop_requested}
+        return {
+            "instrument_state": self._status.value,
+            "stop_requested": self._stop_requested,
+            "abort_reason": self._abort_reason,
+        }
