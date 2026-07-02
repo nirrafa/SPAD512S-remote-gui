@@ -110,9 +110,13 @@ def _handle_voltage(args: list[str], state: MockState) -> CommandResult:
 
 
 def _handle_readout(_args: list[str], state: MockState) -> CommandResult:
+    # T_MSTR,T_SLV,T_PCB,T_CHIP,laser,frame,cooling,saturated. The trailing
+    # cooling/saturated fields extend the reference protocol so a single health
+    # poll covers everything; parse_readout reads indices 4/5 and ignores these.
     return CommandResult(
         text=f"{state.t_master},{state.t_slave},{state.t_pcb},{state.t_chip},"
-        f"{state.laser_freq},{state.frame_freq}"
+        f"{state.laser_freq},{state.frame_freq},"
+        f"{1 if state.cooling_enabled else 0},{1 if state.overexposed else 0}"
     )
 
 

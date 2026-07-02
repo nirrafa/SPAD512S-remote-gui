@@ -141,9 +141,47 @@ export interface DCRCurve {
   dcr_values: number[]
 }
 
+export interface Alarm {
+  type: string
+  severity?: 'warning' | 'critical'
+  value?: number
+  threshold?: number
+}
+
+export interface HealthReadings {
+  temp_master_fpga: number
+  temp_slave_fpga: number
+  temp_pcb: number
+  temp_chip: number
+  vq: number
+  vex: number
+  cooling_active: boolean
+  laser_frequency_hz: number
+  frame_frequency_hz: number
+  saturated: boolean
+  vex_reduced: boolean
+  alarms: Alarm[]
+}
+
+export interface HealthConfig {
+  poll_interval_s: number
+  temp_threshold_chip: number
+  vex_max: number
+  expected_laser_hz: number
+  laser_tolerance: number
+}
+
+export interface VexResult {
+  status?: 'ok' | 'error'
+  requires_confirmation?: boolean
+  vex?: number
+  vex_max?: number
+  message?: string
+}
+
 export type WsMessage =
   | { type: 'busy'; mode: string; progress: number }
   | { type: 'state'; data: Record<string, unknown> }
   | { type: 'preview'; data: Preview }
   | { type: 'progress'; data: Record<string, unknown> }
-  | { type: 'alarm'; data: Record<string, unknown> }
+  | { type: 'alarm'; data: Alarm }

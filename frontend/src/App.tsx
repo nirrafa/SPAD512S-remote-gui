@@ -3,10 +3,11 @@ import './App.css'
 import { CalibrationPage } from './pages/CalibrationPage'
 import { FLIMPage } from './pages/FLIMPage'
 import { GatedPage } from './pages/GatedPage'
+import { HealthPage } from './pages/HealthPage'
 import { IntensityPage } from './pages/IntensityPage'
 import { Raw1BitPage } from './pages/Raw1BitPage'
 
-type Mode = 'intensity' | 'gated' | 'flim' | 'raw1bit' | 'calibration'
+type Mode = 'intensity' | 'gated' | 'flim' | 'raw1bit' | 'calibration' | 'health'
 
 function App() {
   const [mode, setMode] = useState<Mode>('intensity')
@@ -48,12 +49,20 @@ function App() {
         >
           Calibration
         </button>
+        <button
+          type="button"
+          className={mode === 'health' ? 'active' : ''}
+          onClick={() => setMode('health')}
+        >
+          Health
+        </button>
       </nav>
       {mode === 'intensity' && <IntensityPage />}
       {mode === 'gated' && <GatedPage />}
       {mode === 'flim' && <FLIMPage />}
       {mode === 'raw1bit' && <Raw1BitPage />}
       {mode === 'calibration' && <CalibrationPage />}
+      {mode === 'health' && <HealthPage />}
     </>
   )
 }

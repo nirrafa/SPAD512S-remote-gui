@@ -168,9 +168,11 @@ class ProtocolClient:
             self._idle_task = None
 
     async def _idle_watch(self) -> None:
-        assert self._reader is not None
+        reader = self._reader
+        if reader is None:  # disconnected before this task ran
+            return
         try:
-            data = await self._reader.read(1)
+            data = await reader.read(1)
         except asyncio.CancelledError:
             raise
         except (OSError, ConnectionError):

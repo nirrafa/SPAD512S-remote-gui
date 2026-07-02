@@ -17,6 +17,7 @@ from bridge.core.instrument import InstrumentState
 from bridge.core.ws_hub import WebSocketHub
 from bridge.protocol.client import ProtocolClient
 from bridge.routes import acquire, calibration, health, system, ws
+from bridge.services.health import HealthMonitor
 
 
 @asynccontextmanager
@@ -50,12 +51,19 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     if protocol.connected:
         calibration_store.mark_done("breakdown")
     sensor_size = protocol.system_info["sensor_size"] if protocol.system_info else 512
-    app.state.runner = AcquisitionRunner(
+    runner = AcquisitionRunner(
         protocol, instrument, hub, settings.data_root, sensor_size=sensor_size
     )
+    app.state.runner = runner
+
+    health_monitor = HealthMonitor(protocol, instrument, hub)
+    runner.health_monitor = health_monitor
+    app.state.health = health_monitor
+    health_monitor.start()
     try:
         yield
     finally:
+        await health_monitor.stop()
         await protocol.stop()
 
 
@@ -75,6 +83,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
 
     app.include_router(health.router)
+    app.include_router(health.settings_router)
     app.include_router(system.router)
     app.include_router(acquire.router)
     app.include_router(calibration.router)

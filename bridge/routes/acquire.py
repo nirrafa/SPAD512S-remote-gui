@@ -28,6 +28,12 @@ from bridge.services.flim import process_flim
 
 router = APIRouter(prefix="/api/acquire")
 
+# /api/acquire/status briefly waits for the next batch boundary so a freshly
+# tripped auto-protect threshold is reflected (the abort fires at the boundary,
+# not mid-batch). Bounded so a healthy long acquisition still returns promptly.
+STATUS_SETTLE_TRIES = 8
+STATUS_SETTLE_S = 0.03
+
 
 class IntensityRequest(BaseModel):
     model_config = ConfigDict(extra="ignore")
@@ -56,6 +62,38 @@ async def stop(request: Request) -> dict[str, object]:
     await instrument.request_stop()
     await instrument.set(InstrumentStatus.IDLE)
     return {"status": "stopped", "instrument_state": instrument.status.value}
+
+
+@router.get("/status")
+async def acquire_status(request: Request) -> dict[str, object]:
+    instrument: InstrumentState = request.app.state.instrument
+    runner: AcquisitionRunner = request.app.state.runner
+
+    # During a batched acquisition the socket is busy mid-batch, so an
+    # auto-protect stop may be one batch boundary away. Briefly let the runner
+    # reach its next boundary (poll + stop check) so the reported state reflects
+    # a just-tripped threshold rather than the instant before it.
+    if instrument.is_busy and not instrument.stop_requested:
+        for _ in range(STATUS_SETTLE_TRIES):
+            await asyncio.sleep(STATUS_SETTLE_S)
+            if instrument.stop_requested or not instrument.is_busy:
+                break
+
+    last_result = (runner.current or {}).get("result") or {}
+    abort_reason = instrument.abort_reason or last_result.get("abort_reason")
+
+    if instrument.stop_requested or instrument.status is InstrumentStatus.STOPPING:
+        state = "stopping"
+    elif instrument.is_busy:
+        state = "running"
+    else:
+        state = str(last_result.get("status") or "idle")
+
+    return {
+        "state": state,
+        "abort_reason": abort_reason,
+        "instrument_state": instrument.status.value,
+    }
 
 
 @router.post("/intensity")

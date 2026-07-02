@@ -55,6 +55,9 @@ class BridgeTestClient:
     def post(self, path, json=None):
         return self._client.post(path, json=json or {}).json()
 
+    def put(self, path, json=None):
+        return self._client.put(path, json=json or {}).json()
+
     def ws_connect(self, path):
         handle = _WebSocketHandle(self._client.websocket_connect(path))
         self._ws_handles.append(handle)

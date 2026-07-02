@@ -144,6 +144,18 @@ The vendor protocol has no request IDs or multiplexing. If two commands are sent
 
 The `R`, `V`, `S` commands are read-only, but they still go through the same TCP socket. During an acquisition, the socket is busy streaming binary data. Health polling must wait until the acquisition finishes or use cached values from the last poll.
 
+### Auto-abort on a single socket needs a batched acquisition + safe boundaries
+
+A health threshold (e.g. chip over-temperature) can only trigger an abort if the check runs *during* a long acquisition — but the single request/response socket can't be polled mid-stream. Solution (Phase 8): send a multi-iteration intensity acquisition in **batches** (one `I` command per chunk of iterations). Between batches the socket is idle — a safe boundary — so the runner can poll health (`R`+`V`) and check `stop_requested`; if auto-protect tripped, the run ends early and records `abort_reason`. The background health-poll loop still runs on its own interval but skips the socket while the instrument is busy and serves cached readings; the *forced* poll at a batch boundary is what makes abort timely. Trade-off: batching adds one round-trip per batch, so batch size balances abort latency against throughput (10 worked well for 512² 8-bit). A status endpoint that must report a freshly-tripped abort should briefly wait for the next batch boundary rather than sampling mid-batch.
+
+### Health poll = one extended `R` instead of three commands
+
+The reference protocol exposes temps/freqs via `R` and voltages via `V`, but has no command for cooling state or pixel saturation. Rather than invent two more commands (more round-trips, more to serialize), the mock **extends the `R` response** with two trailing fields: `…,laser,frame,cooling,saturated`. The bridge's `parse_health` reads all eight fields, while the older `parse_readout` (indices 4/5 only) keeps working — so one poll covers the whole health picture. The decoder defaults cooling→on / saturated→off when the trailing fields are absent, so it tolerates a real vendor that returns only the original six. Confirm the real vendor's `R` format in Phase 13.
+
+### Broadcast only *new* alarms over WebSocket
+
+Re-broadcasting the full alarm set every poll spams clients and makes "did a new alarm fire?" tests flaky. Track the active alarm *types* in a set and broadcast only types that weren't active last cycle (`broadcast_alarm` per new type). The REST `/health/readings` payload still returns the full current list for a fresh page load.
+
 ### Long acquisitions need a background task + result-grace, not a blocking request
 
 A single acquisition endpoint must serve two conflicting needs: return the full result (preview, saved path) for a quick acquire, *and* let a second request be rejected as "busy" while a long one is still running. With a blocking HTTP client these can't both hold if the endpoint awaits completion (the long call blocks the client, so a sequential second call never overlaps). Resolution: run the acquisition as a **background task**, set the busy state synchronously, then await the task for a short *result grace*; if it finishes, return its result, otherwise return `running` and let it complete unattended (pushing the final preview over WebSocket). A per-op timeout uses `max(grace, timeout_s)` so a timeout result is still captured by the awaiting request. The busy check + state-set must have no `await` between them so they're atomic under asyncio's cooperative scheduling.

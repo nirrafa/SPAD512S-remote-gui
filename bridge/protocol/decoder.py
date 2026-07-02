@@ -39,6 +39,17 @@ class TriggerInfo(TypedDict):
     trigger_valid: bool
 
 
+class HealthReadout(TypedDict):
+    temp_master_fpga: float
+    temp_slave_fpga: float
+    temp_pcb: float
+    temp_chip: float
+    laser_frequency_hz: float
+    frame_frequency_hz: float
+    cooling_active: bool
+    saturated: bool
+
+
 def strip_done(text: str) -> str:
     """Remove a trailing ``DONE`` sentinel (and surrounding whitespace)."""
     stripped = text.strip()
@@ -97,6 +108,39 @@ def parse_readout(text: str, *, expected_laser_hz: float | None = None) -> Trigg
         frame_clock_frequency_hz=frame_hz,
         trigger_valid=trigger_valid,
     )
+
+
+def parse_health(text: str) -> HealthReadout:
+    """Parse the extended ``R`` response.
+
+    ``T_MSTR,T_SLV,T_PCB,T_CHIP,laser,frame[,cooling,saturated]`` — the trailing
+    cooling/saturated flags are bridge-mock extensions (see learnings.md); they
+    default to ``cooling on`` / ``not saturated`` when absent so the decoder
+    tolerates a reference vendor that only returns the first six fields.
+    """
+    fields = strip_done(text).split(",")
+    if len(fields) < 6:
+        raise ValueError(f"Unexpected health readout: {text!r}")
+    cooling = fields[6].strip() != "0" if len(fields) > 6 else True
+    saturated = fields[7].strip() == "1" if len(fields) > 7 else False
+    return HealthReadout(
+        temp_master_fpga=float(fields[0]),
+        temp_slave_fpga=float(fields[1]),
+        temp_pcb=float(fields[2]),
+        temp_chip=float(fields[3]),
+        laser_frequency_hz=float(fields[4]),
+        frame_frequency_hz=float(fields[5]),
+        cooling_active=cooling,
+        saturated=saturated,
+    )
+
+
+def parse_voltages(text: str) -> tuple[float, float]:
+    """Parse the ``V`` response ``vq,vex`` into ``(vq, vex)``."""
+    fields = strip_done(text).split(",")
+    if len(fields) < 2:
+        raise ValueError(f"Unexpected voltages: {text!r}")
+    return float(fields[0]), float(fields[1])
 
 
 def integration_time_unit(bit_depth: int) -> str:
