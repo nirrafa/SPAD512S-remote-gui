@@ -80,13 +80,23 @@ class MockState:
         self.overexposed = True
 
     def fail_after_n_commands(self, n: int) -> None:
+        """Arm fault injection: the next *n* acquisition commands succeed, then
+        the following one fails once and the fault disarms — simulating a
+        transient vendor crash so checkpoint/resume flows can be exercised
+        against the same mock instance."""
         self._fail_after = n
 
     def set_next_response_delay(self, seconds: float) -> None:
         self._next_delay_s = seconds
 
-    def should_fail(self) -> bool:
-        return self._fail_after is not None and self.command_count > self._fail_after
+    def take_acquire_failure(self) -> bool:
+        if self._fail_after is None:
+            return False
+        if self._fail_after > 0:
+            self._fail_after -= 1
+            return False
+        self._fail_after = None
+        return True
 
     def take_delay(self) -> float:
         delay, self._next_delay_s = self._next_delay_s, 0.0

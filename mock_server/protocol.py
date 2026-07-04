@@ -63,10 +63,11 @@ def _coerce_int(value: str, default: int) -> int:
         return default
 
 
+ACQUIRE_COMMANDS = ("I", "G", "F")
+
+
 def handle(command_line: str, state: MockState) -> CommandResult:
     state.command_count += 1
-    if state.should_fail():
-        return CommandResult(text="ERROR: simulated failure", is_error=True)
 
     raw = command_line.strip()
     if not raw:
@@ -74,6 +75,9 @@ def handle(command_line: str, state: MockState) -> CommandResult:
 
     head, _, rest = raw.partition(",")
     args = rest.split(",") if rest else []
+
+    if head in ACQUIRE_COMMANDS and state.take_acquire_failure():
+        return CommandResult(text="ERROR: simulated failure", is_error=True)
 
     handlers = {
         "D": _handle_info_or_path,
