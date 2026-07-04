@@ -185,3 +185,63 @@ export type WsMessage =
   | { type: 'preview'; data: Preview }
   | { type: 'progress'; data: Record<string, unknown> }
   | { type: 'alarm'; data: Alarm }
+
+export interface SweepPoint {
+  index: number
+  label: string
+  value: unknown
+  host_path?: string | null
+}
+
+export interface SweepRequest {
+  mode: string
+  sweep_parameter?: string
+  values?: number[]
+  sweep_parameters?: Record<string, number[]>
+  base_params: Record<string, unknown>
+}
+
+export interface SweepResult {
+  status: 'done' | 'running' | 'error'
+  message?: string
+  sweep_id?: string
+  points_completed?: number
+  points_skipped?: number
+  checkpoints_written?: number
+  results?: SweepPoint[]
+}
+
+export interface AcquireStatus {
+  state: string
+  running: boolean
+  abort_reason?: string | null
+  instrument_state: string
+}
+
+export interface ScheduleRequest {
+  mode: string
+  params: Record<string, unknown>
+  start_time: string
+}
+
+export interface ScheduleResult {
+  status: string
+  job_id?: string
+  start_time?: string
+  message?: string
+}
+
+export interface JobStatus {
+  job_id: string
+  mode: string
+  start_time: string
+  state: 'scheduled' | 'running' | 'completed' | 'failed'
+  result?: AcquireResult | null
+}
+
+export interface StopResult {
+  status: string
+  stop_boundary?: string
+  in_flight_completed?: boolean
+  instrument_state?: string
+}

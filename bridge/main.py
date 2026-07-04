@@ -13,11 +13,15 @@ from bridge import __version__
 from bridge.config import Settings, get_settings
 from bridge.core.acquisition import AcquisitionRunner
 from bridge.core.calibration_state import CalibrationStore
+from bridge.core.checkpoint import CheckpointStore
 from bridge.core.instrument import InstrumentState
 from bridge.core.ws_hub import WebSocketHub
 from bridge.protocol.client import ProtocolClient
-from bridge.routes import acquire, calibration, health, system, ws
+from bridge.routes import acquire, calibration, experiments, health, system, ws
+from bridge.services.experiment_log import ExperimentLog
 from bridge.services.health import HealthMonitor
+from bridge.services.scheduler import Scheduler
+from bridge.services.sweep import SweepRunner
 
 
 @asynccontextmanager
@@ -60,9 +64,19 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     runner.health_monitor = health_monitor
     app.state.health = health_monitor
     health_monitor.start()
+
+    checkpoint_store = CheckpointStore(Path(settings.data_root) / "checkpoints.sqlite")
+    app.state.checkpoints = checkpoint_store
+    app.state.sweep = SweepRunner(runner, instrument, checkpoint_store)
+
+    experiment_log = ExperimentLog()
+    app.state.experiment_log = experiment_log
+    scheduler = Scheduler(runner, experiment_log)
+    app.state.scheduler = scheduler
     try:
         yield
     finally:
+        await scheduler.shutdown()
         await health_monitor.stop()
         await protocol.stop()
 
@@ -88,6 +102,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(acquire.router)
     app.include_router(calibration.router)
     app.include_router(calibration.status_router)
+    app.include_router(experiments.router)
     app.include_router(ws.router)
 
     # Serve the built single-page app at "/" (same origin as the API, so no Vite

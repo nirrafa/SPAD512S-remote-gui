@@ -6,8 +6,16 @@ import { GatedPage } from './pages/GatedPage'
 import { HealthPage } from './pages/HealthPage'
 import { IntensityPage } from './pages/IntensityPage'
 import { Raw1BitPage } from './pages/Raw1BitPage'
+import { SweepPage } from './pages/SweepPage'
 
-type Mode = 'intensity' | 'gated' | 'flim' | 'raw1bit' | 'calibration' | 'health'
+type Mode =
+  | 'intensity'
+  | 'gated'
+  | 'flim'
+  | 'raw1bit'
+  | 'sweep'
+  | 'calibration'
+  | 'health'
 
 function App() {
   const [mode, setMode] = useState<Mode>('intensity')
@@ -44,6 +52,13 @@ function App() {
         </button>
         <button
           type="button"
+          className={mode === 'sweep' ? 'active' : ''}
+          onClick={() => setMode('sweep')}
+        >
+          Sweep
+        </button>
+        <button
+          type="button"
           className={mode === 'calibration' ? 'active' : ''}
           onClick={() => setMode('calibration')}
         >
@@ -61,6 +76,7 @@ function App() {
       {mode === 'gated' && <GatedPage />}
       {mode === 'flim' && <FLIMPage />}
       {mode === 'raw1bit' && <Raw1BitPage />}
+      {mode === 'sweep' && <SweepPage />}
       {mode === 'calibration' && <CalibrationPage />}
       {mode === 'health' && <HealthPage />}
     </>
