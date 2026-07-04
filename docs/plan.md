@@ -561,23 +561,23 @@ frontend/src/components/
 
 ### Tasks
 
-- [ ] Bridge: sweep runner
+- [x] Bridge: sweep runner
   - `POST /api/acquire/sweep` — iterate parameters over range/list
   - Checkpoint after each completed point (write to SQLite)
   - Label each result with parameter value
   - Support single-parameter and multi-parameter (cartesian product) sweeps
   - Continue running if browser disconnects
   - `POST /api/acquire/sweep/resume` — resume from last checkpoint after failure
-- [ ] Bridge: scheduled job runner
+- [x] Bridge: scheduled job runner
   - `POST /api/acquire/schedule` — queue a job with a start time
   - `GET /api/acquire/schedule/<job_id>` — job status
   - Time-triggered execution (asyncio scheduler or APScheduler)
   - Jobs visible in experiment log
   - Run unattended, persist results
-- [ ] Bridge: acquisition status endpoint
+- [x] Bridge: acquisition status endpoint
   - `GET /api/acquire/status` — current operation state, progress, mode, ETA
   - Reports running/completed even after browser reconnect
-- [ ] Bridge: safe-boundary stop (refine from Phase 2)
+- [x] Bridge: safe-boundary stop (refine from Phase 2)
   - Between iterations, between sweep points, between gate steps
   - In-flight frame always completes
   - Report stop boundary in response
@@ -606,13 +606,13 @@ frontend/src/components/
 
 ### Validation gate
 
-- [ ] `pre_dev_tests/test_06_acquisition_styles.py` — all 14 tests pass
-- [ ] `pre_dev_tests/test_12_bridge_reliability.py` — all 9 tests pass
-- [ ] 5-point sweep completes → 5 labeled results with checkpoints
-- [ ] Sweep survives browser disconnect → reconnect shows progress/completion
-- [ ] Sweep resume after simulated crash → skips completed points
-- [ ] Scheduled job triggers at specified time
-- [ ] Stop during sweep → stops at next safe boundary
+- [x] `pre_dev_tests/test_06_acquisition_styles.py` — all 14 tests pass
+- [x] `pre_dev_tests/test_12_bridge_reliability.py` — all 9 tests pass
+- [x] 5-point sweep completes → 5 labeled results with checkpoints
+- [x] Sweep survives browser disconnect → reconnect shows progress/completion
+- [x] Sweep resume after simulated crash → skips completed points
+- [x] Scheduled job triggers at specified time
+- [x] Stop during sweep → stops at next safe boundary
 
 ---
 
