@@ -2,7 +2,9 @@
 
 Each completed sweep point is recorded so an interrupted sweep (bridge crash,
 vendor failure) can resume and skip finished points. Writes are tiny (one row
-per point), so plain synchronous sqlite3 from the event loop is acceptable.
+per point), so plain synchronous sqlite3 from the event loop is acceptable. The
+DB lives under ``settings.data_root`` so tests (which route data_root to a tmp
+dir) get an isolated store.
 """
 from __future__ import annotations
 
@@ -33,6 +35,13 @@ CREATE TABLE IF NOT EXISTS sweep_points (
 
 
 class CheckpointStore:
+    """Persistence for sweep progress.
+
+    ``spec`` carries everything needed to resume a sweep without the original
+    HTTP body: mode, the resolved list of points (index/label/value/params), and
+    the total count.
+    """
+
     def __init__(self, db_path: str | Path) -> None:
         self._path = Path(db_path)
         self._path.parent.mkdir(parents=True, exist_ok=True)
@@ -56,7 +65,12 @@ class CheckpointStore:
             conn.execute("UPDATE sweeps SET status = ? WHERE sweep_id = ?", (status, sweep_id))
 
     def record_point(
-        self, sweep_id: str, point_index: int, label: str, value: Any, host_path: str
+        self,
+        sweep_id: str,
+        point_index: int,
+        label: str,
+        value: Any,
+        host_path: str | None,
     ) -> None:
         with self._connect() as conn:
             conn.execute(
@@ -72,6 +86,30 @@ class CheckpointStore:
                 "SELECT point_index FROM sweep_points WHERE sweep_id = ?", (sweep_id,)
             ).fetchall()
         return {int(row[0]) for row in rows}
+
+    def completed_points(self, sweep_id: str) -> list[dict[str, Any]]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT point_index, label, value, host_path FROM sweep_points "
+                "WHERE sweep_id = ? ORDER BY point_index",
+                (sweep_id,),
+            ).fetchall()
+        return [
+            {
+                "index": int(row[0]),
+                "label": row[1],
+                "value": json.loads(row[2]),
+                "host_path": row[3],
+            }
+            for row in rows
+        ]
+
+    def count_points(self, sweep_id: str) -> int:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT COUNT(*) FROM sweep_points WHERE sweep_id = ?", (sweep_id,)
+            ).fetchone()
+        return int(row[0]) if row else 0
 
     def latest_incomplete(self) -> tuple[str, dict[str, Any]] | None:
         with self._connect() as conn:

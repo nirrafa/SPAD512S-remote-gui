@@ -8,6 +8,8 @@ background. Full decoding/preview/save live in the runner and services.
 from __future__ import annotations
 
 import asyncio
+import contextlib
+from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, ConfigDict
@@ -25,6 +27,8 @@ from bridge.protocol.decoder import (
     parse_optimal_gated,
 )
 from bridge.services.flim import process_flim
+from bridge.services.scheduler import Scheduler
+from bridge.services.sweep import SweepRunner
 
 router = APIRouter(prefix="/api/acquire")
 
@@ -33,6 +37,11 @@ router = APIRouter(prefix="/api/acquire")
 # not mid-batch). Bounded so a healthy long acquisition still returns promptly.
 STATUS_SETTLE_TRIES = 8
 STATUS_SETTLE_S = 0.03
+
+# A stop waits for the in-flight batch/sweep-point to finish at a safe boundary
+# so the vendor protocol is left uncorrupted (no interleaved acquire). Bounded so
+# the endpoint always returns.
+STOP_WAIT_S = 20.0
 
 
 class IntensityRequest(BaseModel):
@@ -58,16 +67,48 @@ class IntensityRequest(BaseModel):
 
 @router.post("/stop")
 async def stop(request: Request) -> dict[str, object]:
+    """Request a safe-boundary stop.
+
+    The in-flight frame/batch (and, for a sweep, the current point) always
+    finishes; the stop takes effect at the next boundary, leaving the vendor
+    protocol uncorrupted and the hardware idle. We wait for the current
+    operation to settle so a subsequent acquire is not rejected as busy and does
+    not interleave on the single TCP socket.
+    """
     instrument: InstrumentState = request.app.state.instrument
+    runner: AcquisitionRunner = request.app.state.runner
+    sweep: SweepRunner = request.app.state.sweep
+
+    was_sweep = sweep.active
     await instrument.request_stop()
-    await instrument.set(InstrumentStatus.IDLE)
-    return {"status": "stopped", "instrument_state": instrument.status.value}
+
+    task = (runner.current or {}).get("task")
+    if task is not None and not task.done():
+        with contextlib.suppress(Exception):
+            await asyncio.wait_for(asyncio.shield(task), STOP_WAIT_S)
+    # Give the sweep loop time to notice the stop at its next point boundary.
+    deadline = STOP_WAIT_S
+    while sweep.active and deadline > 0:
+        await asyncio.sleep(STATUS_SETTLE_S)
+        deadline -= STATUS_SETTLE_S
+
+    if instrument.is_busy:
+        await instrument.set(InstrumentStatus.IDLE)
+
+    boundary = "between_sweep_points" if was_sweep else "between_iterations"
+    return {
+        "status": "stopping",
+        "stop_boundary": boundary,
+        "in_flight_completed": True,
+        "instrument_state": instrument.status.value,
+    }
 
 
 @router.get("/status")
 async def acquire_status(request: Request) -> dict[str, object]:
     instrument: InstrumentState = request.app.state.instrument
     runner: AcquisitionRunner = request.app.state.runner
+    sweep: SweepRunner = request.app.state.sweep
 
     # During a batched acquisition the socket is busy mid-batch, so an
     # auto-protect stop may be one batch boundary away. Briefly let the runner
@@ -81,19 +122,90 @@ async def acquire_status(request: Request) -> dict[str, object]:
 
     last_result = (runner.current or {}).get("result") or {}
     abort_reason = instrument.abort_reason or last_result.get("abort_reason")
+    running = instrument.is_busy or sweep.active
 
     if instrument.stop_requested or instrument.status is InstrumentStatus.STOPPING:
         state = "stopping"
-    elif instrument.is_busy:
+    elif running:
         state = "running"
     else:
-        state = str(last_result.get("status") or "idle")
+        raw = str(last_result.get("status") or "idle")
+        state = "completed" if raw == "done" else raw
 
     return {
         "state": state,
+        "running": running,
         "abort_reason": abort_reason,
         "instrument_state": instrument.status.value,
     }
+
+
+class SweepRequest(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    mode: str = "intensity"
+    sweep_parameter: str | None = None
+    values: list[Any] | None = None
+    sweep_parameters: dict[str, list[Any]] | None = None
+    base_params: dict[str, Any] = {}
+
+
+@router.post("/sweep")
+async def acquire_sweep(request: Request, params: SweepRequest) -> dict[str, object]:
+    protocol: ProtocolClient = request.app.state.protocol
+    sweep: SweepRunner = request.app.state.sweep
+
+    if not protocol.connected:
+        return {"status": "error", "message": "vendor disconnected"}
+    if params.sweep_parameters is None and (
+        params.sweep_parameter is None or params.values is None
+    ):
+        return {
+            "status": "error",
+            "message": "provide sweep_parameter+values or sweep_parameters",
+        }
+
+    return await sweep.start(
+        mode=params.mode,
+        base_params=params.base_params,
+        sweep_parameter=params.sweep_parameter,
+        values=params.values,
+        sweep_parameters=params.sweep_parameters,
+    )
+
+
+@router.post("/sweep/resume")
+async def resume_sweep(request: Request) -> dict[str, object]:
+    protocol: ProtocolClient = request.app.state.protocol
+    sweep: SweepRunner = request.app.state.sweep
+
+    if not protocol.connected:
+        return {"status": "error", "message": "vendor disconnected"}
+    return await sweep.resume()
+
+
+class ScheduleRequest(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    mode: str = "intensity"
+    params: dict[str, Any] = {}
+    start_time: str
+
+
+@router.post("/schedule")
+async def schedule_job(request: Request, body: ScheduleRequest) -> dict[str, object]:
+    scheduler: Scheduler = request.app.state.scheduler
+    job = scheduler.schedule(mode=body.mode, params=body.params, start_time=body.start_time)
+    return {"status": "scheduled", "job_id": job.job_id, "start_time": job.start_time}
+
+
+@router.get("/schedule/{job_id}")
+async def schedule_status(request: Request, job_id: str) -> dict[str, object]:
+    scheduler: Scheduler = request.app.state.scheduler
+    job = scheduler.get(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="job not found")
+    return job.payload()
 
 
 @router.post("/intensity")
