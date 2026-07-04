@@ -1,5 +1,6 @@
 import type {
   AcquireResult,
+  AcquireStatus,
   BridgeStatus,
   CalibrationResult,
   CalibrationStatus,
@@ -12,8 +13,14 @@ import type {
   HealthConfig,
   HealthReadings,
   IntensityParams,
+  JobStatus,
   OptimalParams,
   Raw1BitParams,
+  ScheduleRequest,
+  ScheduleResult,
+  StopResult,
+  SweepRequest,
+  SweepResult,
   SystemInfo,
   VexResult,
 } from './types'
@@ -114,6 +121,30 @@ export async function updateHealthConfig(
 
 export function setVex(vex: number, confirm = false): Promise<VexResult> {
   return postJson<VexResult>('/api/settings/vex', { vex, confirm })
+}
+
+export function acquireSweep(request: SweepRequest): Promise<SweepResult> {
+  return postJson<SweepResult>('/api/acquire/sweep', request)
+}
+
+export function resumeSweep(): Promise<SweepResult> {
+  return postJson<SweepResult>('/api/acquire/sweep/resume', {})
+}
+
+export function getAcquireStatus(): Promise<AcquireStatus> {
+  return getJson<AcquireStatus>('/api/acquire/status')
+}
+
+export function stopAcquisition(): Promise<StopResult> {
+  return postJson<StopResult>('/api/acquire/stop', {})
+}
+
+export function scheduleJob(request: ScheduleRequest): Promise<ScheduleResult> {
+  return postJson<ScheduleResult>('/api/acquire/schedule', request)
+}
+
+export function getJobStatus(jobId: string): Promise<JobStatus> {
+  return getJson<JobStatus>(`/api/acquire/schedule/${jobId}`)
 }
 
 export function wsUrl(): string {
