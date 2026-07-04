@@ -165,10 +165,17 @@ class SweepRunner:
         results: list[dict[str, Any]] = []
         checkpoints_written = 0
         skipped = len(skip)
+        recorded: dict[int, str | None] = (
+            {p["index"]: p["host_path"] for p in self._store.completed_points(sweep_id)}
+            if skip
+            else {}
+        )
         try:
             for point in points:
                 if point["index"] in skip:
-                    results.append(self._point_summary(point, host_path=None))
+                    results.append(
+                        self._point_summary(point, host_path=recorded.get(point["index"]))
+                    )
                     continue
                 if self._instrument.stop_requested:
                     break
@@ -234,7 +241,8 @@ class SweepRunner:
         status = result.get("status")
         if status not in ("done", "running"):
             raise SweepError(str(result.get("message") or f"sweep point {status}"))
-        return result.get("host_path")  # type: ignore[return-value]
+        host_path = result.get("host_path")
+        return str(host_path) if host_path is not None else None
 
 
 def _intensity_params(params: dict[str, Any]) -> IntensityParams:

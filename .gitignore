@@ -35,3 +35,6 @@ Thumbs.db
 # Claude Code agent worktrees + local preview config
 .claude/worktrees/
 .claude/launch.json
+
+# Acquisition output (dev-mode bridge writes here)
+data/

@@ -43,12 +43,18 @@ class CheckpointStore:
     """
 
     def __init__(self, db_path: str | Path) -> None:
+        # Lazy: no file exists until the first sweep touches the store, so
+        # bridge startup has no data_root side effects (a bridge that never
+        # sweeps never writes a DB).
         self._path = Path(db_path)
-        self._path.parent.mkdir(parents=True, exist_ok=True)
-        with self._connect() as conn:
-            conn.executescript(_SCHEMA)
+        self._initialized = False
 
     def _connect(self) -> sqlite3.Connection:
+        if not self._initialized:
+            self._path.parent.mkdir(parents=True, exist_ok=True)
+            with sqlite3.connect(self._path) as conn:
+                conn.executescript(_SCHEMA)
+            self._initialized = True
         return sqlite3.connect(self._path)
 
     def create_sweep(self, spec: dict[str, Any]) -> str:
@@ -103,13 +109,6 @@ class CheckpointStore:
             }
             for row in rows
         ]
-
-    def count_points(self, sweep_id: str) -> int:
-        with self._connect() as conn:
-            row = conn.execute(
-                "SELECT COUNT(*) FROM sweep_points WHERE sweep_id = ?", (sweep_id,)
-            ).fetchone()
-        return int(row[0]) if row else 0
 
     def latest_incomplete(self) -> tuple[str, dict[str, Any]] | None:
         with self._connect() as conn:
