@@ -10,7 +10,10 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+from datetime import datetime
 from typing import Any
+
+import numpy as np
 
 from bridge.core.instrument import InstrumentState, InstrumentStatus
 from bridge.core.ws_hub import WebSocketHub
@@ -21,8 +24,11 @@ from bridge.protocol.decoder import (
     decode_intensity,
     integration_time_unit,
 )
-from bridge.services.file_writer import save_stack
+from bridge.services.data_location import DataLocation
+from bridge.services.file_writer import build_png_metadata, name_suffix, save_acquisition
 from bridge.services.preview import make_preview
+from bridge.services.reducer import reduce_folder
+from bridge.services.sidecar import write_sidecar
 
 # Acquisitions finishing within this window return their full result; longer
 # ones return `running` (and finish in the background). Small enough that a
@@ -37,6 +43,10 @@ RESULT_GRACE_S = 0.3
 BATCH_SIZE = 10
 
 
+def _now_iso() -> str:
+    return datetime.now().astimezone().isoformat(timespec="seconds")
+
+
 class IntensityParams:
     def __init__(
         self,
@@ -48,6 +58,10 @@ class IntensityParams:
         overlap: bool,
         pileup_correction: bool,
         timeout_s: float | None,
+        sample_name: str | None = None,
+        experiment_name: str | None = None,
+        notes: str | None = None,
+        run_reducer: bool = False,
     ) -> None:
         self.bit_depth = bit_depth
         self.integration_time = integration_time
@@ -56,6 +70,30 @@ class IntensityParams:
         self.overlap = overlap
         self.pileup_correction = pileup_correction
         self.timeout_s = timeout_s
+        self.sample_name = sample_name
+        self.experiment_name = experiment_name
+        self.notes = notes
+        self.run_reducer = run_reducer
+
+    def png_metadata_kwargs(self) -> dict[str, Any]:
+        return {}
+
+    def sidecar_params(self, unit: str) -> dict[str, Any]:
+        return {
+            "mode": "intensity",
+            "bit_depth": self.bit_depth,
+            "integration_time": self.integration_time,
+            "integration_time_ms": self.integration_time if unit == "ms" else None,
+            "integration_time_us": self.integration_time if unit == "us" else None,
+            "integration_time_unit": unit,
+            "iterations": self.iterations,
+            "roi_width": self.roi_width,
+            "overlap": self.overlap,
+            "pileup_correction": self.pileup_correction,
+            "sample_name": self.sample_name,
+            "experiment_name": self.experiment_name,
+            "notes": self.notes,
+        }
 
 
 class GatedParams:
@@ -75,6 +113,10 @@ class GatedParams:
         stream: bool,
         pileup_correction: bool,
         arbitrary_steps: list[float] | None,
+        sample_name: str | None = None,
+        experiment_name: str | None = None,
+        notes: str | None = None,
+        run_reducer: bool = False,
     ) -> None:
         self.bit_depth = bit_depth
         self.integration_time = integration_time
@@ -89,12 +131,50 @@ class GatedParams:
         self.stream = stream
         self.pileup_correction = pileup_correction
         self.arbitrary_steps = arbitrary_steps
+        self.sample_name = sample_name
+        self.experiment_name = experiment_name
+        self.notes = notes
+        self.run_reducer = run_reducer
 
     @property
     def effective_steps(self) -> int:
         if self.arbitrary_steps:
             return len(self.arbitrary_steps)
         return self.gate_steps
+
+    def png_metadata_kwargs(self) -> dict[str, Any]:
+        return {
+            "gate_steps": self.effective_steps,
+            "gate_step_size_ps": self.gate_step_size,
+            "gate_width_ns": float(self.gate_width),
+            "gate_offset_ps": float(self.gate_offset),
+            "gate_trigger_external": self.gate_trigger_source == "external",
+            "gate_arbitrary": bool(self.arbitrary_steps),
+        }
+
+    def sidecar_params(self, unit: str) -> dict[str, Any]:
+        return {
+            "mode": "gated",
+            "bit_depth": self.bit_depth,
+            "integration_time": self.integration_time,
+            "integration_time_ms": self.integration_time if unit == "ms" else None,
+            "integration_time_us": self.integration_time if unit == "us" else None,
+            "integration_time_unit": unit,
+            "iterations": self.iterations,
+            "gate_steps": self.effective_steps,
+            "gate_step_size_ps": self.gate_step_size,
+            "gate_width": self.gate_width,
+            "gate_offset": self.gate_offset,
+            "gate_direction": self.gate_direction,
+            "gate_trigger_source": self.gate_trigger_source,
+            "overlap": self.overlap,
+            "stream": self.stream,
+            "pileup_correction": self.pileup_correction,
+            "arbitrary_steps": self.arbitrary_steps,
+            "sample_name": self.sample_name,
+            "experiment_name": self.experiment_name,
+            "notes": self.notes,
+        }
 
 
 class AcquisitionRunner:
@@ -103,25 +183,30 @@ class AcquisitionRunner:
         protocol: ProtocolClient,
         instrument: InstrumentState,
         hub: WebSocketHub,
-        data_root: str,
+        location: DataLocation | str,
         *,
         sensor_size: int = 512,
     ) -> None:
         self._protocol = protocol
         self._instrument = instrument
         self._hub = hub
-        self._data_root = data_root
+        self._location = location if isinstance(location, DataLocation) else DataLocation(location)
         self._sensor_size = sensor_size
         self.current: dict[str, Any] | None = None
         # Set after construction (the monitor depends on the runner's siblings).
         self.health_monitor: Any | None = None
+        self.calibration_store: Any | None = None
 
     async def run_intensity(self, params: IntensityParams) -> dict[str, Any]:
         if self._instrument.is_busy:
             return {"status": "error", "message": "instrument busy"}
 
         await self._instrument.set(InstrumentStatus.ACQUIRING)
-        await self._hub.broadcast_busy(mode="intensity", progress=0.0)
+        # Single-frame acquires finish within the result grace; the spec expects
+        # their first WebSocket frame to be the preview, so only multi-frame
+        # runs narrate `busy` first.
+        if params.iterations > 1:
+            await self._hub.broadcast_busy(mode="intensity", progress=0.0)
 
         task = asyncio.create_task(self._intensity_op(params))
         self.current = {"mode": "intensity", "task": task, "result": None}
@@ -137,12 +222,13 @@ class AcquisitionRunner:
     async def _intensity_op(self, params: IntensityParams) -> dict[str, Any]:
         rows = self._sensor_size
         unit = integration_time_unit(params.bit_depth)
+        started_at = _now_iso()
 
         result: dict[str, Any]
         try:
             data, completed, aborted = await self._acquire_io(params)
             result = await asyncio.to_thread(
-                self._postprocess, data, params, rows, unit, completed
+                self._postprocess, data, params, rows, unit, completed, started_at
             )
             if aborted:
                 result["status"] = "aborted"
@@ -156,12 +242,14 @@ class AcquisitionRunner:
             result = {"status": "error", "message": str(exc)}
         finally:
             await self._instrument.set(InstrumentStatus.IDLE)
-            await self._hub.broadcast_state(self._instrument.snapshot())
 
         if self.current is not None:
             self.current["result"] = result
+        # Preview goes out before the idle-state frame so a client that
+        # connected pre-acquire sees the image first (spec ordering).
         if result.get("status") in ("done", "aborted") and "preview" in result:
             await self._hub.broadcast_preview(result["preview"])
+        await self._hub.broadcast_state(self._instrument.snapshot())
         return result
 
     async def _acquire_io(
@@ -225,7 +313,13 @@ class AcquisitionRunner:
                 await self.health_monitor.poll(force=True)
 
     def _postprocess(
-        self, data: bytes, params: IntensityParams, rows: int, unit: str, completed: int
+        self,
+        data: bytes,
+        params: IntensityParams,
+        rows: int,
+        unit: str,
+        completed: int,
+        started_at: str,
     ) -> dict[str, Any]:
         stack = decode_intensity(
             data,
@@ -235,16 +329,113 @@ class AcquisitionRunner:
             iterations=completed,
             pileup=params.pileup_correction,
         )
-        preview = make_preview(stack[0])
-        host_path = save_stack(stack, data_root=self._data_root, mode="intensity")
-        return {
+        result: dict[str, Any] = {
             "status": "done",
-            "preview": preview,
-            "host_path": host_path,
+            "preview": make_preview(stack[0]),
             "total_frames": completed,
             "integration_time_unit": unit,
             "bytes": len(data),
         }
+        result.update(
+            self._persist(
+                stack,
+                mode="intensity",
+                params=params,
+                unit=unit,
+                vendor_frames=completed,
+                gate_steps=None,
+                started_at=started_at,
+            )
+        )
+        return result
+
+    # --- Persistence ------------------------------------------------------------
+
+    def _persist(
+        self,
+        stack: np.ndarray,
+        *,
+        mode: str,
+        params: IntensityParams | GatedParams,
+        unit: str,
+        vendor_frames: int,
+        gate_steps: int | None,
+        started_at: str,
+    ) -> dict[str, Any]:
+        """Write the PNG folder + sidecar (and optionally run the reducer).
+
+        Runs synchronously — callers invoke it from a worker thread.
+        """
+        metadata = build_png_metadata(
+            mode=mode,
+            integration_time=params.integration_time,
+            integration_time_unit=unit,
+            iterations=vendor_frames,
+            overlap=params.overlap,
+            laser_frequency_hz=self._laser_frequency_hz(),
+            software_version=self._software_version(),
+            taken_at=datetime.now(),
+            **params.png_metadata_kwargs(),
+        )
+        saved = save_acquisition(
+            stack,
+            base_dir=self._location.base_dir,
+            mode=mode,
+            bit_depth=params.bit_depth,
+            metadata=metadata,
+            gate_steps=gate_steps,
+            folder_suffix=name_suffix(params.sample_name, params.experiment_name),
+        )
+        sidecar_path = write_sidecar(
+            saved.acq_dir,
+            params=params.sidecar_params(unit),
+            calibration_state=self._calibration_snapshot(),
+            temperatures=self._temperatures(),
+            timestamp_start=started_at,
+            timestamp_end=_now_iso(),
+            png_metadata=metadata,
+            frame_count=len(saved.png_files),
+        )
+        result: dict[str, Any] = {
+            "host_path": self._location.display_path(saved.acq_dir),
+            "sidecar_path": self._location.display_path(sidecar_path),
+        }
+        if params.run_reducer:
+            reduced = reduce_folder(saved.acq_dir)
+            result["reducer_output"] = {
+                "meta_json": self._location.display_path(reduced["meta_json"]),
+                "movie_npy": self._location.display_path(reduced["movie_npy"]),
+                "movie_npy_shape": reduced["movie_npy_shape"],
+                "pipeline_compatible": reduced["pipeline_compatible"],
+            }
+        return result
+
+    def _laser_frequency_hz(self) -> float:
+        if self.health_monitor is not None:
+            value = float(self.health_monitor.readings_payload()["laser_frequency_hz"])
+            if value > 0:
+                return value
+            return float(self.health_monitor.config.expected_laser_hz)
+        return 40e6
+
+    def _temperatures(self) -> dict[str, float]:
+        if self.health_monitor is None:
+            return {}
+        payload = self.health_monitor.readings_payload()
+        keys = ("temp_master_fpga", "temp_slave_fpga", "temp_pcb", "temp_chip")
+        return {key: float(payload[key]) for key in keys}
+
+    def _calibration_snapshot(self) -> dict[str, Any]:
+        if self.calibration_store is None:
+            return {}
+        snapshot: dict[str, Any] = self.calibration_store.snapshot()
+        return snapshot
+
+    def _software_version(self) -> str:
+        info = self._protocol.system_info
+        if info:
+            return str(info.get("sw_version", "unknown"))
+        return "unknown"
 
     # --- Gated ----------------------------------------------------------------
 
@@ -269,6 +460,7 @@ class AcquisitionRunner:
     async def _gated_op(self, params: GatedParams) -> dict[str, Any]:
         rows = self._sensor_size
         gate_steps = params.effective_steps
+        started_at = _now_iso()
         n_frames = params.iterations * gate_steps
         expected = n_frames * bytes_per_frame(
             params.bit_depth, rows, rows, params.pileup_correction
@@ -311,16 +503,23 @@ class AcquisitionRunner:
             )
             previews_sent += 1
 
-        host_path = await asyncio.to_thread(
-            save_stack, stack, data_root=self._data_root, mode="gated"
+        persisted = await asyncio.to_thread(
+            self._persist,
+            stack,
+            mode="gated",
+            params=params,
+            unit=unit,
+            vendor_frames=params.iterations,
+            gate_steps=gate_steps,
+            started_at=started_at,
         )
         return {
             "status": "done",
             "preview": make_preview(stack[0]),
-            "host_path": host_path,
             "total_gate_steps": gate_steps,
             "previews_sent": previews_sent,
             "total_frames": n_frames,
             "integration_time_unit": unit,
             "bytes": len(data),
+            **persisted,
         }

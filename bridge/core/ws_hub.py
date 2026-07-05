@@ -48,7 +48,7 @@ class WebSocketHub:
     async def broadcast_preview(
         self, payload: Mapping[str, Any], *, index: int | None = None, count: int | None = None
     ) -> None:
-        message: dict[str, Any] = {"type": "preview", "data": payload}
+        message: dict[str, Any] = {"type": "preview_frame", "data": payload}
         if index is not None:
             message["index"] = index
         if count is not None:

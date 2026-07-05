@@ -13,7 +13,7 @@ export interface LiveState {
 }
 
 interface PreviewMessage {
-  type: 'preview'
+  type: 'preview_frame'
   data: Preview
   index?: number
   count?: number
@@ -70,7 +70,7 @@ export function useWebSocket(): LiveState {
             stepPreviews: [],
             stepCount: 0,
           }))
-        } else if (msg.type === 'preview') {
+        } else if (msg.type === 'preview_frame') {
           const pm = msg as PreviewMessage
           setState((s) => {
             if (pm.index === undefined) return { ...s, preview: pm.data }
