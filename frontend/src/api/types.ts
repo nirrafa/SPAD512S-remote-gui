@@ -182,7 +182,7 @@ export interface VexResult {
 export type WsMessage =
   | { type: 'busy'; mode: string; progress: number }
   | { type: 'state'; data: Record<string, unknown> }
-  | { type: 'preview'; data: Preview }
+  | { type: 'preview_frame'; data: Preview }
   | { type: 'progress'; data: Record<string, unknown> }
   | { type: 'alarm'; data: Alarm }
 

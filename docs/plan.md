@@ -622,31 +622,31 @@ frontend/src/components/
 
 ### Tasks
 
-- [ ] Bridge: save path management
+- [x] Bridge: save path management
   - `POST /api/settings/save-path` — set host save directory
   - `D,<path>` command to vendor server
-- [ ] Bridge: file organization
+- [x] Bridge: file organization
   - `data/intensity_images/acqXXXXX/` with `IMGxxxxx.png`
   - `data/gated_images/acqXXXXX/` with `IMGxxxxx.png`
   - Auto-incrementing acquisition numbers
   - PNG files with embedded metadata (Author, Mode, Integration time, Laser frequency, gate params, triggers, SW version)
-- [ ] Bridge: JSON sidecar writer
+- [x] Bridge: JSON sidecar writer
   - Full parameter set
   - Calibration state snapshot
   - Temperatures at acquisition time
   - Timestamps (start, end)
   - Sample/experiment name and notes
   - Superset aligned with reducer's meta format
-- [ ] Bridge: reducer integration
+- [x] Bridge: reducer integration
   - Port `Reduce_size_512SPAD.py` logic as a callable service
   - Input: PNG folder → output: `meta_acqXXXXX.json` + `movie_arr_acqXXXXX.npy`
   - 3D array shape: `nframes × x × y` (matching existing pipeline)
   - Optional: run automatically after acquisition or on-demand
-- [ ] Bridge: data listing + download endpoints
+- [x] Bridge: data listing + download endpoints
   - `GET /api/data/list?path=<path>` — list files in a host directory
   - `GET /api/data/download?path=<path>` — download file/folder from host
   - `GET /api/data/sidecar?path=<path>` — read JSON sidecar
-- [ ] Compatibility verification
+- [x] Compatibility verification
   - Load `movie_arr_*.npy` with `512^2_*.py` reference code
   - Load `meta_*.json` and verify keys match expectations
   - Run `SEP_D.py` analysis functions on test data
@@ -667,14 +667,14 @@ tests/
 
 ### Validation gate
 
-- [ ] `pre_dev_tests/test_09_data_handling.py` — all 18 tests pass
-- [ ] Intensity acquisition → PNG folder created in correct layout
-- [ ] PNGs contain expected metadata keys
-- [ ] JSON sidecar contains params, calibration state, temps, timestamps
-- [ ] Reducer produces `meta_acqXXXXX.json` + `movie_arr_acqXXXXX.npy`
-- [ ] `movie_arr` shape is `(nframes, x, y)`
-- [ ] Downstream script `SEP_D.py` loads the data without modification
-- [ ] Full data download from browser works
+- [x] `pre_dev_tests/test_09_data_handling.py` — all 18 tests pass
+- [x] Intensity acquisition → PNG folder created in correct layout
+- [x] PNGs contain expected metadata keys
+- [x] JSON sidecar contains params, calibration state, temps, timestamps
+- [x] Reducer produces `meta_acqXXXXX.json` + `movie_arr_acqXXXXX.npy`
+- [x] `movie_arr` shape is `(nframes, x, y)`
+- [x] Downstream script `SEP_D.py` loads the data without modification
+- [x] Full data download from browser works
 
 ---
 

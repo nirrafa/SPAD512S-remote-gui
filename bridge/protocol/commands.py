@@ -10,6 +10,10 @@ def info() -> str:
     return "D"
 
 
+def set_save_path(path: str) -> str:
+    return f"D,{path}"
+
+
 def readout() -> str:
     return "R"
 

@@ -55,6 +55,10 @@ class IntensityRequest(BaseModel):
     overlap: bool = False
     pileup_correction: bool = False
     timeout_s: float | None = None
+    sample_name: str | None = None
+    experiment_name: str | None = None
+    notes: str | None = None
+    run_reducer: bool = False
 
     @property
     def resolved_integration_time(self) -> float:
@@ -234,6 +238,10 @@ async def acquire_intensity(request: Request, params: IntensityRequest) -> dict[
             overlap=params.overlap,
             pileup_correction=params.pileup_correction,
             timeout_s=params.timeout_s,
+            sample_name=params.sample_name,
+            experiment_name=params.experiment_name,
+            notes=params.notes,
+            run_reducer=params.run_reducer,
         )
     )
 
@@ -303,6 +311,10 @@ class GatedRequest(BaseModel):
     stream: bool = False
     pileup_correction: bool = False
     arbitrary_steps: list[float] | None = None
+    sample_name: str | None = None
+    experiment_name: str | None = None
+    notes: str | None = None
+    run_reducer: bool = False
 
     @property
     def resolved_integration_time(self) -> float:
@@ -358,6 +370,10 @@ async def acquire_gated(request: Request, params: GatedRequest) -> dict[str, obj
             stream=params.stream,
             pileup_correction=params.pileup_correction,
             arbitrary_steps=params.arbitrary_steps,
+            sample_name=params.sample_name,
+            experiment_name=params.experiment_name,
+            notes=params.notes,
+            run_reducer=params.run_reducer,
         )
     )
 
