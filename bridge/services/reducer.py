@@ -19,7 +19,11 @@ from PIL import Image
 def _png_metadata(path: Path) -> dict[str, str]:
     with Image.open(path) as im:
         im.load()
-        return {k: v for k, v in im.info.items() if isinstance(v, str)}
+        return {
+            k: v
+            for k, v in im.info.items()
+            if isinstance(k, str) and isinstance(v, str)
+        }
 
 
 def _expected_frames(meta: dict[str, str]) -> int:

@@ -20,11 +20,11 @@
 | 7 | Calibration system | ✅ Done | test_07 13/13 |
 | 8 | Safety, health & auto-protect | ✅ Done | test_08 17/17, test_13 5/5 (health-poll resolved) |
 | 9 | Sweeps, scheduling & resilience | ✅ Done | test_06 14/14, test_12 9/9 |
-| 10 | Data handling & reducer | Not started | 0 / 18 |
+| 10 | Data handling & reducer | ✅ Done | test_09 18/18 + compat 3/3 |
 | 11 | Front-end visualization | Not started | 0 / 12 |
 | 12 | Experiment log & presets | Not started | 0 / 16 |
 | 13 | Integration & hardware bring-up | Not started | 0 / 11 |
-| **Total** | Phases 0–9 done | | **149 / 202 pre-dev tests passing** (prior 151 figure double-counted the default `tests/` suite; measured pre-Phase-9 baseline was 134) |
+| **Total** | Phases 0–10 done | | **167 / 202 pre-dev tests passing** (prior 151 figure double-counted the default `tests/` suite; measured pre-Phase-9 baseline was 134) |
 
 > Note: the 202 collected pre-dev tests exceed the plan's original 185 estimate; per-file counts (e.g. `test_02` = 26, not 11) differ from the plan's mapping table. The remaining failures are Phases 9–13; the prior in-scope deferral `test_13` health-poll is now resolved (Phase 8). `test_12` sweep/disconnect remains → Phase 9.
 
@@ -62,6 +62,23 @@ Copy this block for each new entry. Most recent session goes on top.
 ---
 
 <!-- Add new entries below this line, most recent first -->
+
+### 2026-07-05 — Phase 10: data handling & reducer integration
+
+**Phase(s):** 10
+**Duration:** ~2h (Opus agent, resumed once; finished inline)
+**Who:** Nir + Claude
+
+#### Done
+- **file_writer.py rewritten:** vendor-convention PNG folders (`<mode>_images/acqXXXXX/IMGxxxxx.png`) with the exact pipeline metadata keys as PNG text chunks (unit suffixes load-bearing for downstream `removesuffix` parsing); auto-incrementing acq numbers; per-frame `Frame`/`Gate step` keys.
+- **services/sidecar.py:** JSON sidecar (params, calibration snapshot, temperatures, timestamps, sample/experiment name).
+- **services/reducer.py:** callable port of `Reduce_size_512SPAD.py` → `meta_<acq>.json` + `movie_arr_<acq>.npy` `(nframes, x, y)`; the original's hardcoded 512×256 crop is now a configurable parameter; built-in `_verify` reloads outputs the way `512^2_*.py`/`SEP_D.py` do.
+- **routes/data.py + services/data_location.py:** `GET /api/data/{list,download,sidecar}` with every path resolved and constrained under `data_root` (traversal-safe); `POST /api/settings/save-path` (`D,<path>`).
+- **tests/test_data_compat.py:** downstream-load compatibility (intensity + gated + crop).
+- **Tests:** test_09 18/18; compat 3/3; 89-test regression green; ruff + mypy clean; frontend build/lint/test green. Pre-dev total 149 → 167/202.
+
+#### Next session
+- Post-review fix pass (stop endpoint, auto-protect Vex, config validation — task list), hardware smoke test, then Phase 11 (visualization).
 
 ### 2026-07-04 — Phase 9: sweeps, scheduling & resilience
 
