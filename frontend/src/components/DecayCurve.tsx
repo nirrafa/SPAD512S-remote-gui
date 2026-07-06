@@ -36,7 +36,7 @@ export function DecayCurve({ gateOffsets, series }: Props) {
       <line x1={PADDING} y1={PADDING} x2={PADDING} y2={HEIGHT - PADDING} stroke="currentColor" />
       {active.map((s, si) => (
         <polyline
-          key={s.label}
+          key={si}
           fill="none"
           stroke={COLORS[si % COLORS.length]}
           strokeWidth={1.8}

@@ -13,6 +13,13 @@ gap on an edge/unsupported path or a hang under fault injection · **S3** cleanu
 
 ---
 
+> **Review round 4 (2026-07-06, `[low]` all-phases pass).** Scanned the Phase 10–11
+> additions plus the safety-critical backend (acquisition batching/abort, health
+> auto-protect, sweep resume, protocol framing/decoders, FLIM decode). **No fatal
+> (S1) bug found.** One real S3 in the new Phase 11 code fixed (B-36); one S3 footgun
+> logged (B-37). Everything else already tracked below (B-32..B-35 hardware) or in the
+> three prior rounds (B-01..B-31). `test_10`'s browser gate remains deferred to Phase 13.
+
 ## Open
 
 ### B-04 — Mock TCP read loop assumes one `read()` == exactly one command · S2
@@ -135,6 +142,11 @@ emitted. Harmless (falls through to the error branch). **Suggested fix:** drop
 **Where:** [`bridge/protocol/decoder.py`](../bridge/protocol/decoder.py) `parse_health`, [`mock_server/protocol.py`](../mock_server/protocol.py).
 **Mechanism:** both alarms depend on the mock-only `cooling`/`saturated` fields appended to `R`; against real hardware `parse_health` defaults cooling→on / saturated→off, so two of the five PRD §5 alarms can never fire. **Suggested fix (Phase 13):** find the real vendor's cooling/saturation readout, or surface "not available" rather than a confident `cooling_active:true`.
 
+### B-37 — `ImageCanvas.onViewport` effect re-fires every render with an inline callback · S3 (footgun)
+
+**Where:** [`frontend/src/components/ImageCanvas.tsx`](../frontend/src/components/ImageCanvas.tsx) `useEffect(() => onViewport?.(...), [scale, offset, onViewport])`.
+**Mechanism:** `onViewport` is unused by any current page, but a future caller passing an inline arrow (`onViewport={(v) => setX(v)}`) gives a new function identity each render; if the callback sets parent state the effect can loop. **Suggested fix:** drop the prop until a consumer needs it, or wrap callers in `useCallback` and document the contract.
+
 ---
 
 ## Fixed
@@ -162,6 +174,7 @@ emitted. Harmless (falls through to the error branch). **Suggested fix:** drop
 | B-29 | S2 | Health config was unvalidated (`poll_interval_s:0`/negative would tight-loop R+V on the socket; `vex_max`/thresholds unbounded) and `missing_laser_hz` was in `update` but omitted from `config_payload`. Added pydantic bounds (`poll_interval_s≥0.1`, etc.), a `poll_interval_s` floor in `update_config`, and get/put symmetry. | this session | `tests/test_safety_fixes.py::{test_config_rejects_nonpositive_poll_interval,test_health_config_get_put_symmetric}` |
 | B-30 | S2 | `POST /api/settings/vex` with `confirm:true` accepted any value (no absolute ceiling). Added a hard `VEX_HARD_CEILING` (50 V) refused even with confirmation (real per-chip bound is a Phase 13 item). | this session | `tests/test_safety_fixes.py::test_vex_hard_ceiling_rejected_even_with_confirm` |
 | B-31 | S2 | Health readings were presented as live indefinitely after a vendor disconnect (no validity/age). `readings_payload` now carries `readings_valid` + `last_updated`, invalidated on disconnect. Front-end WS hook now also captures `alarm` frames (previously dropped) and merges them into HealthPage between polls; HealthPage awaits gained catch handlers. | this session | `tests/test_safety_fixes.py::test_readings_expose_validity_and_timestamp` |
+| B-36 | S3 | Phase 11 `useROI` derived ROI labels from `prev.length`, recycling letters after a removal → two ROIs could share a label; `DecayCurve` keyed its `<polyline>` series by that label → duplicate React keys and possible mis-render of decay lines. Labels are now monotonic (from a ref counter) and `DecayCurve` keys by index. | this session (Phase 11 review) | `frontend` build/lint/vitest green |
 
 ---
 

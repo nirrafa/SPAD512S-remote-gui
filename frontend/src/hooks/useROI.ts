@@ -15,21 +15,21 @@ export interface UseROI {
 
 export function useROI(): UseROI {
   const [rois, setRois] = useState<Roi[]>([])
+  // Monotonic so ids and labels never collide, even after a removal (deriving
+  // the label from `prev.length` would recycle letters and produce two "B"s).
   const counter = useRef(0)
-  const nextId = () => `roi-${(counter.current += 1)}`
 
   const addRectangle = useCallback((x: number, y: number, width: number, height: number) => {
+    const n = (counter.current += 1)
     setRois((prev) => [
       ...prev,
-      { id: nextId(), type: 'rectangle', label: roiLabel(prev.length), x, y, width, height },
+      { id: `roi-${n}`, type: 'rectangle', label: roiLabel(n - 1), x, y, width, height },
     ])
   }, [])
 
   const addFreehand = useCallback((points: Point[]) => {
-    setRois((prev) => [
-      ...prev,
-      { id: nextId(), type: 'freehand', label: roiLabel(prev.length), points },
-    ])
+    const n = (counter.current += 1)
+    setRois((prev) => [...prev, { id: `roi-${n}`, type: 'freehand', label: roiLabel(n - 1), points }])
   }, [])
 
   const remove = useCallback((id: string) => {
