@@ -26,7 +26,7 @@
 | 13 | Integration & hardware bring-up | Not started | 0 / 11 |
 | **Total** | Phases 0–10 done | | **167 / 202 pre-dev tests passing** (prior 151 figure double-counted the default `tests/` suite; measured pre-Phase-9 baseline was 134) |
 
-> Note: the 202 collected pre-dev tests exceed the plan's original 185 estimate; per-file counts (e.g. `test_02` = 26, not 11) differ from the plan's mapping table. The remaining failures are Phases 9–13; the prior in-scope deferral `test_13` health-poll is now resolved (Phase 8). `test_12` sweep/disconnect remains → Phase 9.
+> Note: the 202 collected pre-dev tests exceed the plan's original 185 estimate; per-file counts (e.g. `test_02` = 26, not 11) differ from the plan's mapping table. The remaining ~35 non-passing are **Phases 11–13**: `test_10` visualization (12, browser), `test_11` reproducibility/log/presets (16), `test_15` end-to-end (11). All prior in-scope deferrals are resolved (`test_13` health-poll → Phase 8; `test_12` sweep/disconnect → Phase 9). Three code-review rounds have been applied (B-01..B-31 fixed; B-32..B-35 logged for hardware bring-up).
 
 ---
 
@@ -62,6 +62,26 @@ Copy this block for each new entry. Most recent session goes on top.
 ---
 
 <!-- Add new entries below this line, most recent first -->
+
+### 2026-07-06 — Review round 3: safety-control fixes + full doc sync
+
+**Phase(s):** post-10 quality
+**Duration:** ~2h
+**Who:** Nir + Claude (inline)
+
+#### Done
+- Two whole-repo reviews (Sonnet) over Phases 0–8 + a fix pass. Empirically-verified findings fixed with regression tests (`tests/test_safety_fixes.py`): **B-27** `STOPPING`∈`is_busy`; **B-28** auto-protect actually commands `V,<vex_max>` + unlatches `vex_reduced`; **B-29** health config validated (pydantic bounds, `poll_interval_s` floor, get/put symmetry); **B-30** hard 50 V Vex ceiling even with confirm; **B-31** readings carry `readings_valid`+`last_updated`, WS `alarm` frames now captured in the GUI. The cosmetic-`/stop` finding was already resolved by Phase 9 (verified; annotated B-21).
+- Logged **B-32..B-35** (gated/FLIM no safe boundary; per-batch `timeout_s`; mock `R` vs `cSPAD.get_freq()`; cooling/overexposure alarms dead on real vendor) for Phase 13.
+- Synced all tracking docs: `constraints.md` (new safety/deployment/data constraints + a Mock-vs-hardware validation checklist), `plan.md` decisions log (Phases 5–10 + review), `CLAUDE.md` (202 tests, worktree/PYTHONPATH testing gotcha, status pointer), this file.
+- Merged PRs #6–#9; `main` @ `bcee81d`, clean and in sync.
+
+#### State of the world
+- **Phases 0–10 complete + 3 review rounds applied.** 167/202 pre-dev; `tests/` default suite green; ruff + mypy clean; frontend build/lint/test green. GUI has 7 tabs (Intensity, Gated, FLIM, Raw 1-bit, Sweep, Calibration, Health).
+
+#### Next session
+1. **Hardware smoke test** (camera on hand) — run the `constraints.md` "Mock vs. real hardware" checklist before further polish; it can invalidate protocol-layer assumptions cheaply.
+2. **Phase 11** (visualization: ROI, decay, phasor, lifetime map, histogram — `test_10`), then **12** (experiment log/presets — `test_11`), then **13** (E2E `test_15` + hardware bring-up + docs).
+3. Agents keep hitting the shared plan session limit on long runs — spawn with "commit after each step"; interrupted work has always been recoverable from the worktree.
 
 ### 2026-07-05 — Phase 10: data handling & reducer integration
 

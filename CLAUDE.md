@@ -45,7 +45,7 @@ npm test                         # run tests
 
 ## Pre-development spec tests
 
-`pre_dev_tests/` contains **185 acceptance tests** reverse-engineered from the PRD, organized by section. These are stubs — fixtures in `conftest.py` raise `NotImplementedError` until wired to the real implementation. After development, run them to verify PRD coverage:
+`pre_dev_tests/` contains **202 acceptance tests** (the plan's original 185 was an estimate) reverse-engineered from the PRD, organized by section. These are stubs — fixtures in `conftest.py` raise `NotImplementedError` until wired to the real implementation. After development, run them to verify PRD coverage:
 
 | File | PRD Section |
 |---|---|
@@ -65,12 +65,17 @@ npm test                         # run tests
 | `test_14_mock_vendor_server.py` | Testing: Mock server |
 | `test_15_end_to_end.py` | Testing: E2E scenarios |
 
+## Status
+
+**Phases 0–10 complete** (bridge + mock + SPA: intensity, gated, FLIM, raw 1-bit, sweeps/scheduled/abort, calibration, safety/health, data handling) + 3 code-review rounds applied (B-01..B-31 fixed; B-32..B-35 open for hardware bring-up). `main` is clean and green. Next: hardware smoke test (see the "Mock vs. real hardware" checklist in [constraints](docs/constraints.md)), then Phases 11 (visualization), 12 (log/presets), 13 (E2E + bring-up).
+
 ## Testing
 
 - Bridge tests run against the mock cSPAD server, not real hardware.
 - Test each command path, serialization/busy behavior, safe-boundary abort, reconnect, sweep checkpoint/resume, auto-protect thresholds.
 - End-to-end tests drive the SPA against bridge+mock.
 - Verify produced files match reducer layout (`meta_*.json` + `movie_arr_*.npy`).
+- **Git worktree gotcha:** background agents run in isolated worktrees, but the editable install (`pip install -e`) resolves `bridge`/`mock_server` back to the *main* checkout. In a worktree, always run tests as `PYTHONPATH="$PWD" pytest` or you'll test stale code and see phantom failures.
 
 ## Workflow
 
