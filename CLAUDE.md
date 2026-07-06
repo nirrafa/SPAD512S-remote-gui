@@ -67,7 +67,7 @@ npm test                         # run tests
 
 ## Status
 
-**Phases 0–12 complete** (bridge + mock + SPA: intensity, gated, FLIM, raw 1-bit, sweeps/scheduled/abort, calibration, safety/health, data handling, in-browser visualization, experiment log + presets + re-run) + code-review rounds applied (B-01..B-31, B-36 fixed; B-32..B-35, B-37 open). **179/202** pre-dev passing. The remaining gates — `test_10` (visualization) and `test_15` (E2E) — both need the Playwright `spa_client` harness, stood up once in **Phase 13**; Phase 11/12 features are verified live against the mock and covered by unit tests. `main` is clean and green. Next: Phase 13 (Playwright E2E + hardware bring-up). Hardware validation is deferred until the camera is back (see the "Mock vs. real hardware" checklist in [constraints](docs/constraints.md)).
+**Phases 0–13 complete — full PRD spec coverage, 202/202 pre-dev passing against the mock.** Bridge + mock + SPA cover intensity, gated, FLIM, raw 1-bit, sweeps/scheduled/abort, calibration, safety/health, data handling, in-browser visualization, experiment log + presets + re-run, and a Playwright browser E2E harness (`test_10` + `test_15`). Code-review rounds applied (B-01..B-31, B-36 fixed; B-32..B-35, B-37 open — all hardware/edge). Browser E2E needs the optional `e2e` extra (`pip install -e ".[e2e]"` + `python -m playwright install chromium`); the `spa_client` fixture skips cleanly without it. `main` is clean and green. **The only work left is hardware bring-up on the Windows host when the SPAD512² returns** — see the "Mock vs. real hardware" checklist in [constraints](docs/constraints.md) (B-32..B-35).
 
 ## Testing
 

@@ -77,12 +77,14 @@ export function CalibrationPage() {
         <section className="calibration-grid">
           <CalibrationCard
             title="Breakdown"
+            calKey="breakdown"
             entry={status?.breakdown}
             disabled={disabled}
             onRun={() => runStep(calibrateBreakdown, false)}
           />
           <CalibrationCard
             title="Noise"
+            calKey="noise"
             entry={status?.noise}
             setupPrompt={SETUP_PROMPTS.noise}
             disabled={disabled}
@@ -90,6 +92,7 @@ export function CalibrationPage() {
           />
           <CalibrationCard
             title="Dead pixel"
+            calKey="dead-pixel"
             entry={status?.dead_pixel}
             setupPrompt={SETUP_PROMPTS.dead_pixel}
             disabled={disabled}
@@ -97,12 +100,13 @@ export function CalibrationPage() {
           />
           <CalibrationCard
             title="Master/slave offset"
+            calKey="master-slave-offset"
             entry={status?.master_slave_offset}
             setupPrompt={SETUP_PROMPTS.master_slave_offset}
             disabled={disabled}
             onRun={() => runStep(calibrateMasterSlaveOffset, false)}
           />
-          <CalibrationCard title="FLIM IRF" entry={status?.flim_irf} />
+          <CalibrationCard title="FLIM IRF" calKey="flim-irf" entry={status?.flim_irf} />
         </section>
 
         <section className="viewer">

@@ -31,6 +31,7 @@ export interface IntensityParams {
   overlap: boolean
   pileup_correction: boolean
   timeout_s?: number
+  run_reducer?: boolean
 }
 
 export interface Raw1BitParams {
