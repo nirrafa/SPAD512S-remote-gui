@@ -33,7 +33,13 @@ class InstrumentState:
 
     @property
     def is_busy(self) -> bool:
-        return self._status in (InstrumentStatus.ACQUIRING, InstrumentStatus.CALIBRATING)
+        # STOPPING is busy: the in-flight batch is still streaming until the
+        # runner reaches its next safe boundary, so a new command must not start.
+        return self._status in (
+            InstrumentStatus.ACQUIRING,
+            InstrumentStatus.CALIBRATING,
+            InstrumentStatus.STOPPING,
+        )
 
     @property
     def stop_requested(self) -> bool:

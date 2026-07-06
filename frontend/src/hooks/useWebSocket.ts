@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { wsUrl } from '../api/client'
-import type { Preview, WsMessage } from '../api/types'
+import type { Alarm, Preview, WsMessage } from '../api/types'
 
 export interface LiveState {
   wsConnected: boolean
@@ -10,6 +10,7 @@ export interface LiveState {
   preview: Preview | null
   stepPreviews: (Preview | null)[]
   stepCount: number
+  alarms: Alarm[]
 }
 
 interface PreviewMessage {
@@ -27,6 +28,7 @@ const INITIAL: LiveState = {
   preview: null,
   stepPreviews: [],
   stepCount: 0,
+  alarms: [],
 }
 
 export function useWebSocket(): LiveState {
@@ -86,6 +88,12 @@ export function useWebSocket(): LiveState {
         } else if (msg.type === 'progress') {
           const p = msg.data['progress']
           setState((s) => ({ ...s, progress: typeof p === 'number' ? p : s.progress }))
+        } else if (msg.type === 'alarm') {
+          const alarm = msg.data
+          setState((s) => ({
+            ...s,
+            alarms: [alarm, ...s.alarms.filter((a) => a.type !== alarm.type)].slice(0, 20),
+          }))
         }
       }
     }

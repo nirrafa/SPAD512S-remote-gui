@@ -115,6 +115,26 @@ emitted. Harmless (falls through to the error branch). **Suggested fix:** drop
 > plain 8-bit intensity + status + reconnect. B-18 in particular would be caught by a
 > single "calibration rejected while acquiring" test. Address alongside Phase 8/9.
 
+### B-32 — Gated/FLIM acquisitions have no safe boundary · S2 (scope)
+
+**Where:** [`bridge/core/acquisition.py`](../bridge/core/acquisition.py) `_gated_op`, `bridge/routes/acquire.py` FLIM.
+**Mechanism:** batching (and thus mid-run stop/auto-protect) is intensity-only; gated/FLIM run a single vendor command, so a `stop`/over-temp is swallowed until the whole command completes. Gated sweeps are exactly the long acquisitions on real hardware. **Suggested fix:** batch gated by iterations too; report as a known limit until then.
+
+### B-33 — `timeout_s` became per-batch for >10-iteration intensity runs · S2
+
+**Where:** [`bridge/core/acquisition.py`](../bridge/core/acquisition.py).
+**Mechanism:** the batched path applies `timeout_s` per batch, so a 100-iteration run with `timeout_s=10` can legally run ~100s; the request's promised whole-op timeout no longer holds. **Suggested fix:** track a whole-op deadline and pass the remaining budget per batch.
+
+### B-34 — Mock's extended `R` (8 fields) breaks `cSPAD.get_freq()` against the mock · S3 (mock fidelity)
+
+**Where:** [`mock_server/protocol.py`](../mock_server/protocol.py) `_handle_readout`.
+**Mechanism:** Phase 8 appended `cooling,saturated` to `R`; `cSPAD.get_freq()` does `split(',')[4:]` → now 4 elements instead of 2, so a lab script `laser, frame = spad.get_freq()` breaks against the mock (not the real vendor). Note in learnings; consider a separate health command instead of overloading `R`.
+
+### B-35 — Cooling-failure & suspected-overexposure alarms are dead against the real vendor · S2 (hardware)
+
+**Where:** [`bridge/protocol/decoder.py`](../bridge/protocol/decoder.py) `parse_health`, [`mock_server/protocol.py`](../mock_server/protocol.py).
+**Mechanism:** both alarms depend on the mock-only `cooling`/`saturated` fields appended to `R`; against real hardware `parse_health` defaults cooling→on / saturated→off, so two of the five PRD §5 alarms can never fire. **Suggested fix (Phase 13):** find the real vendor's cooling/saturation readout, or surface "not available" rather than a confident `cooling_active:true`.
+
 ---
 
 ## Fixed
@@ -136,7 +156,12 @@ emitted. Harmless (falls through to the error branch). **Suggested fix:** drop
 | B-18 | S1 | Calibration endpoints (`/api/calibrate/*`, incl. `flim-irf`) set `CALIBRATING` with no `is_busy` guard, so a calibration launched during an acquisition overwrote instrument state, contended for the single TCP socket, and its `finally: set(IDLE)` dropped the busy flag mid-acquisition. Added an atomic `is_busy` check to every calibration entry point. | this session | (add regression test — see coverage gaps) |
 | B-19 | S2 | `/api/acquire/flim` and `/api/calibration/dcr-curve` only caught `NotConnectedError`/`ProtocolError`; a short/garbled payload raising `ValueError` from the decoder escaped as HTTP 500. Both now catch `ValueError` and return `{"status":"error",…}`. | this session | (add regression test) |
 | B-20 | S1 | Front-end WebSocket never reconnected (`onclose` only flagged disconnected) → the GUI silently froze after any bridge restart/LAN blip; `onmessage` did an unguarded `JSON.parse`; `postJson`/acquire fetches ignored non-OK responses. Added exponential-backoff reconnect, a `JSON.parse` try/catch, and `res.ok` checks (acquire calls now route through `postJson`). | this session | frontend build/lint/test green |
-| B-21 | S1 | `/api/acquire/stop` was cosmetic: it set `stop_requested` then forced `IDLE` while the acquisition task kept streaming → busy guard dropped mid-run, protocol desync possible. Phase 8 made multi-iteration acquisitions run in batches; the runner honors `stop_requested` at batch boundaries and records `abort_reason`; `GET /api/acquire/status` reports state + reason. | Phase 8 (PR #6) | `test_08` `TestAutoProtect` (auto-abort on over-temperature) |
+| B-21 | S1 | `/api/acquire/stop` was cosmetic: it set `stop_requested` then forced `IDLE` while the acquisition task kept streaming → busy guard dropped mid-run, protocol desync possible. Phase 8 made multi-iteration acquisitions run in batches; the runner honors `stop_requested` at batch boundaries and records `abort_reason`; **Phase 9** further made `/stop` await the in-flight task to its safe boundary before returning `stopping`. | Phase 8/9 | `test_06`, `test_08`, `test_12` |
+| B-27 | S1 | `STOPPING` was not counted as `is_busy`, so during the abort window (between `request_stop` and the runner's next boundary) a concurrent acquire/calibration could start and interleave commands on the single socket. `is_busy` now includes `STOPPING`. | this session | `tests/test_safety_fixes.py::test_stopping_counts_as_busy` |
+| B-28 | S1 | Auto-protect on over-Vex only set a `vex_reduced` flag and never commanded the hardware (unsafe bias stayed on the real detector), and the flag never cleared. It now sends `V,<vex_max>` when idle+connected and unlatches once `vex ≤ vex_max`. | this session | `tests/test_safety_fixes.py::test_auto_protect_actually_lowers_vex` |
+| B-29 | S2 | Health config was unvalidated (`poll_interval_s:0`/negative would tight-loop R+V on the socket; `vex_max`/thresholds unbounded) and `missing_laser_hz` was in `update` but omitted from `config_payload`. Added pydantic bounds (`poll_interval_s≥0.1`, etc.), a `poll_interval_s` floor in `update_config`, and get/put symmetry. | this session | `tests/test_safety_fixes.py::{test_config_rejects_nonpositive_poll_interval,test_health_config_get_put_symmetric}` |
+| B-30 | S2 | `POST /api/settings/vex` with `confirm:true` accepted any value (no absolute ceiling). Added a hard `VEX_HARD_CEILING` (50 V) refused even with confirmation (real per-chip bound is a Phase 13 item). | this session | `tests/test_safety_fixes.py::test_vex_hard_ceiling_rejected_even_with_confirm` |
+| B-31 | S2 | Health readings were presented as live indefinitely after a vendor disconnect (no validity/age). `readings_payload` now carries `readings_valid` + `last_updated`, invalidated on disconnect. Front-end WS hook now also captures `alarm` frames (previously dropped) and merges them into HealthPage between polls; HealthPage awaits gained catch handlers. | this session | `tests/test_safety_fixes.py::test_readings_expose_validity_and_timestamp` |
 
 ---
 
