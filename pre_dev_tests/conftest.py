@@ -7,11 +7,12 @@ They will be wired to real implementations once the code exists.
 import time
 
 import pytest
-from fastapi.testclient import TestClient
-
+import requests
 from bridge.config import Settings
 from bridge.main import create_app
+from fastapi.testclient import TestClient
 from mock_server.harness import MockVendorServer
+from spa_harness import SpaClient, ThreadedBridge, free_port
 
 
 class _WebSocketHandle:
@@ -93,9 +94,18 @@ def mock_vendor_server():
 
 
 @pytest.fixture
-def bridge_client(mock_vendor_server, tmp_path):
+def bridge_client(request, mock_vendor_server, tmp_path):
     """An HTTP/WebSocket client connected to a running bridge instance
-    that is itself connected to the mock vendor server."""
+    that is itself connected to the mock vendor server.
+
+    When a test also drives the browser (``spa_client``), this shares the same
+    live uvicorn server so both see the same acquisitions/log; otherwise it uses
+    the fast in-process ``TestClient``.
+    """
+    if "spa_client" in request.fixturenames:
+        live = request.getfixturevalue("live_bridge")
+        yield LiveHTTPClient(live.base_url)
+        return
     mock_vendor_server.start()
     settings = Settings(
         vendor_host="127.0.0.1",
@@ -108,11 +118,62 @@ def bridge_client(mock_vendor_server, tmp_path):
     client.close()
 
 
+class LiveHTTPClient:
+    """Minimal HTTP client against the live uvicorn bridge (shared with the
+    browser). Mirrors the ``.get`` interface the E2E spec tests use."""
+
+    def __init__(self, base_url):
+        self._base = base_url
+
+    def get(self, path, **_):
+        return requests.get(self._base + path, timeout=10).json()
+
+    def post(self, path, json=None):
+        return requests.post(self._base + path, json=json or {}, timeout=30).json()
+
+
 @pytest.fixture
-def spa_client(bridge_client):
-    """A browser automation handle (e.g. Playwright) pointed at the SPA
-    served by the bridge, for end-to-end tests."""
-    raise NotImplementedError("Wire to browser automation client")
+def live_bridge(mock_vendor_server, tmp_path):
+    """A real uvicorn bridge (background thread) serving the built SPA and
+    connected to the mock — the substrate the browser drives."""
+    mock_vendor_server.start()
+    settings = Settings(
+        vendor_host="127.0.0.1",
+        vendor_port=mock_vendor_server.port,
+        data_root=str(tmp_path),
+        bridge_port=free_port(),
+    )
+    bridge = ThreadedBridge(settings)
+    bridge.start()
+    yield bridge
+    bridge.stop()
+
+
+@pytest.fixture
+def spa_client(live_bridge):
+    """A Chromium page (Playwright) pointed at the SPA served by the bridge."""
+    try:
+        from playwright.sync_api import sync_playwright
+    except ImportError:
+        pytest.skip("playwright not installed")
+
+    playwright = sync_playwright().start()
+    try:
+        browser = playwright.chromium.launch(headless=True)
+    except Exception as exc:  # noqa: BLE001 — missing browser binary → skip
+        playwright.stop()
+        pytest.skip(f"chromium unavailable: {exc}")
+
+    page = browser.new_page()
+    page.set_default_timeout(15000)
+    page.goto(live_bridge.base_url)
+    page.wait_for_selector(".tabs", timeout=15000)
+    client = SpaClient(page, live_bridge.base_url)
+    try:
+        yield client
+    finally:
+        browser.close()
+        playwright.stop()
 
 
 @pytest.fixture

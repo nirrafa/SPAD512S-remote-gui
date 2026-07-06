@@ -2,6 +2,7 @@ import type { CalibrationEntry } from '../api/types'
 
 interface Props {
   title: string
+  calKey: string
   entry: CalibrationEntry | undefined
   setupPrompt?: string
   disabled?: boolean
@@ -13,10 +14,10 @@ function formatTimestamp(timestamp: number | undefined): string {
   return new Date(timestamp * 1000).toLocaleString()
 }
 
-export function CalibrationCard({ title, entry, setupPrompt, disabled, onRun }: Props) {
+export function CalibrationCard({ title, calKey, entry, setupPrompt, disabled, onRun }: Props) {
   const state = entry?.state ?? 'none'
   return (
-    <div className="panel calibration-card">
+    <div className="panel calibration-card" data-cal={calKey} data-state={state}>
       <h3>{title}</h3>
       <p>
         <span className={`cal-state cal-state-${state}`}>{state}</span>

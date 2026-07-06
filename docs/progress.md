@@ -21,10 +21,10 @@
 | 8 | Safety, health & auto-protect | ✅ Done | test_08 17/17, test_13 5/5 (health-poll resolved) |
 | 9 | Sweeps, scheduling & resilience | ✅ Done | test_06 14/14, test_12 9/9 |
 | 10 | Data handling & reducer | ✅ Done | test_09 18/18 + compat 3/3 |
-| 11 | Front-end visualization | Features done; test_10 Playwright gate → Phase 13 | 0 / 12 (browser gate deferred) |
+| 11 | Front-end visualization | ✅ Done (browser gate closed in 13) | 12 / 12 |
 | 12 | Experiment log & presets | ✅ Done | 16 / 16 |
-| 13 | Integration & hardware bring-up | Not started | 0 / 11 |
-| **Total** | Phases 0–12 done (11 browser E2E gate deferred to 13) | | **179 / 202 pre-dev tests passing** (remaining: test_10 viz + test_15 E2E, both need the Playwright `spa_client` harness stood up in Phase 13) |
+| 13 | Integration & E2E (hardware bring-up deferred) | ✅ Done | 11 / 11 |
+| **Total** | Phases 0–13 done; hardware bring-up deferred until the camera returns | | **202 / 202 pre-dev tests passing** ✅ |
 
 > Note: the 202 collected pre-dev tests exceed the plan's original 185 estimate; per-file counts (e.g. `test_02` = 26, not 11) differ from the plan's mapping table. The remaining ~35 non-passing are **Phases 11–13**: `test_10` visualization (12, browser), `test_11` reproducibility/log/presets (16), `test_15` end-to-end (11). All prior in-scope deferrals are resolved (`test_13` health-poll → Phase 8; `test_12` sweep/disconnect → Phase 9). Three code-review rounds have been applied (B-01..B-31 fixed; B-32..B-35 logged for hardware bring-up).
 
@@ -62,6 +62,27 @@ Copy this block for each new entry. Most recent session goes on top.
 ---
 
 <!-- Add new entries below this line, most recent first -->
+
+### 2026-07-06 — Phase 13: Playwright E2E harness — 202/202 green
+
+**Phase(s):** 13 (software; hardware bring-up deferred)
+**Duration:** ~3h
+**Who:** Nir + Claude (inline)
+
+#### Done
+- **Playwright `spa_client` harness** (`pre_dev_tests/spa_harness.py`): a real Chromium page driving a **threaded-uvicorn** bridge that serves the built SPA and connects to the mock TCP server. `SpaClient` implements the full test_10/test_15 vocabulary (navigate, set params, acquire, draw ROIs via real mouse drags, read plots/decay/histogram, presets, log, re-run, sweep, schedule, calibration, alarm). Fixtures skip cleanly when Playwright/the browser is absent; `playwright` is an optional `e2e` extra.
+- `bridge_client` now shares the live server when co-requested with `spa_client` (the reducer data-compat test); otherwise keeps the fast in-process `TestClient`.
+- Thin SPA test hooks: `data-scale` (canvas viewport), `data-decay` (DecayCurve series JSON), `data-cal`/`data-state` (CalibrationCard), scheduled-job testid, and a default-on "Run reducer" checkbox.
+- **Bug fix:** reducer output was written to the acq dir's *parent*; now `out_dir=acq_dir` so `meta_*.json`+`movie_arr_*.npy` sit under the acquisition's `result_path` (fixes the E2E data-compat gate).
+
+#### Tests
+- **`test_10` 12/12 + `test_15` 11/11 → all 202/202 pre-dev pass.** Backend suite 26/26; `ruff` (bridge/mock/tests + the new harness) + `mypy` clean; frontend `tsc`/`oxlint`/`vitest` (20) + `vite build` green.
+
+#### Deferred (needs the camera)
+- Hardware bring-up on the Windows host: one acquisition per mode, real temps, real calibration durations, DONE-framing/R-field-count validation — the constraints "Mock vs. real hardware" checklist (B-32..B-35).
+
+#### State of the world
+- **Phases 0–13 complete. Full PRD spec coverage (202/202) against the mock.** The only remaining work is hardware validation when the SPAD512² is back.
 
 ### 2026-07-06 — Phase 12: experiment log, presets & re-run
 

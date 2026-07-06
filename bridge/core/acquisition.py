@@ -401,7 +401,10 @@ class AcquisitionRunner:
             "sidecar_path": self._location.display_path(sidecar_path),
         }
         if params.run_reducer:
-            reduced = reduce_folder(saved.acq_dir)
+            # Write the reduced meta_/movie_arr_ alongside the PNGs (inside the
+            # acq dir) so they travel with the acquisition and are listed under
+            # its result_path — the default writes to the parent folder.
+            reduced = reduce_folder(saved.acq_dir, out_dir=saved.acq_dir)
             result["reducer_output"] = {
                 "meta_json": self._location.display_path(reduced["meta_json"]),
                 "movie_npy": self._location.display_path(reduced["movie_npy"]),

@@ -30,6 +30,13 @@ dev = [
     "ruff>=0.3",
     "mypy>=1.9",
 ]
+# Browser end-to-end tests (test_10 visualization, test_15 E2E). After install,
+# run `python -m playwright install chromium` once to fetch the browser; the
+# spa_client fixture skips cleanly when Playwright or the browser is absent.
+e2e = [
+    "playwright>=1.44",
+    "pytest-playwright>=0.5",
+]
 
 [tool.setuptools.packages.find]
 include = ["bridge*", "mock_server*"]

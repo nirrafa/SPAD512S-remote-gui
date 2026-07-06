@@ -69,7 +69,7 @@ export function ScheduleForm({ disabled, onSchedule, job }: Props) {
         Schedule
       </button>
       {job && (
-        <p>
+        <p data-testid="scheduled-job">
           Job <code>{job.job_id}</code>: {job.state}
           {job.result?.host_path && (
             <span className="muted"> → {job.result.host_path}</span>

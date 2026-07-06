@@ -842,11 +842,11 @@ frontend/src/components/
 
 ### Validation gate
 
-- [ ] All 185 pre-dev spec tests pass
-- [ ] E2E test suite passes against mock
-- [ ] Bridge starts and serves SPA from a single command
-- [ ] On Windows host with real camera: one successful acquisition per mode
-- [ ] Produced `meta_*.json` + `movie_arr_*.npy` load in downstream scripts
+- [x] **All 202 pre-dev spec tests pass** (the plan's 185 was an estimate) — `test_10` (12) + `test_15` (11) closed via the Playwright `spa_client` harness
+- [x] E2E test suite passes against mock (real Chromium driving the bridge-served SPA + mock TCP)
+- [x] Bridge starts and serves SPA from a single command (launcher builds once, uvicorn serves `dist` at `/`)
+- [ ] On Windows host with real camera: one successful acquisition per mode — **deferred, needs the camera** (see the constraints "Mock vs. real hardware" checklist)
+- [x] Produced `meta_*.json` + `movie_arr_*.npy` load in downstream scripts (`test_data_compat` + E2E `test_reducer_output_matches_pipeline`)
 
 ---
 
@@ -959,3 +959,6 @@ Phases 4–12 can be parallelized after Phase 3, but the recommended order above
 | 2026-07-06 | Phase 12 experiment log + presets are **SQLite-backed** (`ExperimentLog`, lazy-init under `data_root` like `CheckpointStore`), not in-memory | Real lab log must survive bridge restarts; matches the plan's durability intent and the sweep-checkpoint pattern |
 | 2026-07-06 | Auto-logging happens at the **route layer** (`_record_acquisition` in `acquire.py`) on `done`/`aborted`; the runner exposes `acquisition_context()` for calibration+temps | Keeps the runner unchanged and one owner of the snapshot; long `running` acquisitions and per-sweep-point logging remain a follow-up (test_11 covers single-shot) |
 | 2026-07-06 | Re-run merges `{overrides}` over the stored params and re-dispatches through the sweep helpers (`_intensity_params`/`_gated_params`) | Reuses the existing param-coercion; a re-run is itself logged as a new entry |
+| 2026-07-06 | Phase 13 `spa_client` = real Chromium (Playwright) driving a **threaded-uvicorn** bridge that serves the built SPA + connects to the mock TCP; harness in `pre_dev_tests/spa_harness.py` | The bridge-only tests keep the fast in-process `TestClient`; only browser tests pay for a real server. `bridge_client` shares the live server when co-requested (the reducer data-compat test). Playwright is an optional `e2e` extra; fixtures skip cleanly without it |
+| 2026-07-06 | SPA gained thin test hooks (`data-scale`, `data-decay`, `data-cal`/`data-state`, a scheduled-job testid) rather than the harness scraping rendered SVG geometry | Stable anchors decouple the tests from pixel layout; each is a single attribute with no runtime effect |
+| 2026-07-06 | `run_reducer` on intensity acquires from the SPA defaults **on**, and reducer output is written **inside** the acq dir (`out_dir=acq_dir`) | E2E expects analysis-ready `meta_*.json`+`movie_arr_*.npy` under the acquisition's `result_path`; the default wrote them to the parent folder |

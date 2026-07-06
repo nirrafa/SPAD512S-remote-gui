@@ -73,7 +73,7 @@ export function ImageCanvas({ preview, colormap, id, range, overlay, onViewport 
 
   return (
     <div className="image-canvas">
-      <div className="image-canvas-stage">
+      <div className="image-canvas-stage" data-scale={scale} data-offset-x={offset.x} data-offset-y={offset.y}>
         <canvas
           id={id}
           ref={canvasRef}

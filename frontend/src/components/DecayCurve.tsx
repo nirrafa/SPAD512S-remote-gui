@@ -31,6 +31,10 @@ export function DecayCurve({ gateOffsets, series }: Props) {
       viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
       role="img"
       aria-label="Per-ROI decay curve"
+      data-decay={JSON.stringify({
+        gate_offsets: gateOffsets,
+        series: active.map((s) => ({ label: s.label, counts: s.counts })),
+      })}
     >
       <line x1={PADDING} y1={HEIGHT - PADDING} x2={WIDTH - PADDING} y2={HEIGHT - PADDING} stroke="currentColor" />
       <line x1={PADDING} y1={PADDING} x2={PADDING} y2={HEIGHT - PADDING} stroke="currentColor" />

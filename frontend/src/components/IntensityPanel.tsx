@@ -18,6 +18,7 @@ export function IntensityPanel({ systemInfo, disabled, onAcquire }: Props) {
   const [roiWidth, setRoiWidth] = useState(512)
   const [overlap, setOverlap] = useState(false)
   const [pileup, setPileup] = useState(false)
+  const [runReducer, setRunReducer] = useState(true)
 
   const bitDepths = systemInfo?.valid_bit_depths ?? FALLBACK_BIT_DEPTHS
   const widths = systemInfo?.valid_roi_widths ?? FALLBACK_WIDTHS
@@ -30,6 +31,7 @@ export function IntensityPanel({ systemInfo, disabled, onAcquire }: Props) {
     roi_width: roiWidth,
     overlap,
     pileup_correction: pileup,
+    run_reducer: runReducer,
   }
 
   const submit = () => onAcquire(currentParams)
@@ -42,6 +44,7 @@ export function IntensityPanel({ systemInfo, disabled, onAcquire }: Props) {
     if (typeof params.roi_width === 'number') setRoiWidth(params.roi_width)
     if (typeof params.overlap === 'boolean') setOverlap(params.overlap)
     if (typeof params.pileup_correction === 'boolean') setPileup(params.pileup_correction)
+    if (typeof params.run_reducer === 'boolean') setRunReducer(params.run_reducer)
   }
 
   return (
@@ -92,6 +95,14 @@ export function IntensityPanel({ systemInfo, disabled, onAcquire }: Props) {
       <label className="checkbox">
         <input type="checkbox" checked={pileup} onChange={(e) => setPileup(e.target.checked)} />
         Pileup correction
+      </label>
+      <label className="checkbox">
+        <input
+          type="checkbox"
+          checked={runReducer}
+          onChange={(e) => setRunReducer(e.target.checked)}
+        />
+        Run reducer (analysis-ready .npy)
       </label>
       <button type="button" disabled={disabled} onClick={submit}>
         {disabled ? 'Busy…' : 'Acquire'}
