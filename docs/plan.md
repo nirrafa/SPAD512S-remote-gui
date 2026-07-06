@@ -792,12 +792,12 @@ frontend/src/components/
 
 ### Validation gate
 
-- [ ] `pre_dev_tests/test_11_reproducibility_and_workflow.py` — all 16 tests pass
-- [ ] Every acquisition auto-logged → visible in experiment log
-- [ ] Save preset → load preset → parameters match
-- [ ] Re-run from log → identical acquisition succeeds
-- [ ] Re-run with overrides → modified parameters used
-- [ ] Search by sample name returns matching entries
+- [x] `pre_dev_tests/test_11_reproducibility_and_workflow.py` — all 16 tests pass
+- [x] Every acquisition auto-logged → visible in experiment log (route-level `_record_acquisition`; verified live: acquire → Log tab shows the entry with result path)
+- [x] Save preset → load preset → parameters match (PresetSelector in Intensity + Gated panels; verified live)
+- [x] Re-run from log → identical acquisition succeeds (verified live: re-run → acq00002)
+- [x] Re-run with overrides → modified parameters used (`{overrides}` merged over stored params)
+- [x] Search by sample name returns matching entries (SQL `LIKE` over sample/experiment/notes)
 - [ ] Browser: experiment log page renders, search works, re-run dialog opens
 
 ---
@@ -956,3 +956,6 @@ Phases 4–12 can be parallelized after Phase 3, but the recommended order above
 | 2026-07-06 | Post-review safety fixes: `STOPPING`∈`is_busy`; auto-protect actually sends `V,<vex_max>`; health config bounded; hard 50 V Vex ceiling; readings carry `valid`+`last_updated`; WS `alarm` frames captured in the GUI | Empirical Phase 8 review (B-27..B-31); the cosmetic-stop finding was already fixed by Phase 9 |
 | 2026-07-06 | Phase 11 viz all client-side on the **downsampled preview** (ROI stats, histogram, auto-stretch, decay); ROIs drawn in 512-display space, scaled to preview grid for stats | Full arrays stay on host (constraints); the preview is enough for interactive QA and keeps the browser light |
 | 2026-07-06 | Phase 11 pure math in unit-tested utils (`imageProcessing.ts` phasor/ROI/histogram/stretch, `phasor.ts` first-harmonic); `test_10`'s Playwright `spa_client` gate **deferred to Phase 13** | Standing up the browser harness once serves both test_10 and test_15 (E2E); features verified live against the mock via the preview browser in the meantime |
+| 2026-07-06 | Phase 12 experiment log + presets are **SQLite-backed** (`ExperimentLog`, lazy-init under `data_root` like `CheckpointStore`), not in-memory | Real lab log must survive bridge restarts; matches the plan's durability intent and the sweep-checkpoint pattern |
+| 2026-07-06 | Auto-logging happens at the **route layer** (`_record_acquisition` in `acquire.py`) on `done`/`aborted`; the runner exposes `acquisition_context()` for calibration+temps | Keeps the runner unchanged and one owner of the snapshot; long `running` acquisitions and per-sweep-point logging remain a follow-up (test_11 covers single-shot) |
+| 2026-07-06 | Re-run merges `{overrides}` over the stored params and re-dispatches through the sweep helpers (`_intensity_params`/`_gated_params`) | Reuses the existing param-coercion; a re-run is itself logged as a new entry |

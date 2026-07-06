@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { getOptimalParams } from '../api/client'
 import type { GatedParams, SystemInfo } from '../api/types'
+import { PresetSelector } from './PresetSelector'
 
 interface Props {
   systemInfo: SystemInfo | null
@@ -44,22 +45,40 @@ export function GatedPanel({ systemInfo, disabled, onAcquire }: Props) {
     return parts.length > 0 ? parts : undefined
   }
 
-  const submit = () => {
-    onAcquire({
-      bit_depth: bitDepth,
-      integration_time_ms: integrationTime,
-      iterations,
-      gate_steps: gateSteps,
-      gate_step_size_ps: stepSize,
-      gate_width: gateWidth,
-      gate_offset: gateOffset,
-      gate_direction: direction,
-      gate_trigger_source: trigger,
-      overlap,
-      stream,
-      pileup_correction: pileup,
-      arbitrary_steps: parseArbitrary(),
-    })
+  const buildParams = (): GatedParams => ({
+    bit_depth: bitDepth,
+    integration_time_ms: integrationTime,
+    iterations,
+    gate_steps: gateSteps,
+    gate_step_size_ps: stepSize,
+    gate_width: gateWidth,
+    gate_offset: gateOffset,
+    gate_direction: direction,
+    gate_trigger_source: trigger,
+    overlap,
+    stream,
+    pileup_correction: pileup,
+    arbitrary_steps: parseArbitrary(),
+  })
+
+  const submit = () => onAcquire(buildParams())
+
+  const applyPreset = (params: Record<string, unknown>) => {
+    if (typeof params.bit_depth === 'number') setBitDepth(params.bit_depth)
+    const it = params.integration_time_ms ?? params.integration_time
+    if (typeof it === 'number') setIntegrationTime(it)
+    if (typeof params.iterations === 'number') setIterations(params.iterations)
+    if (typeof params.gate_steps === 'number') setGateSteps(params.gate_steps)
+    if (typeof params.gate_step_size_ps === 'number') setStepSize(params.gate_step_size_ps)
+    if (typeof params.gate_width === 'number') setGateWidth(params.gate_width)
+    if (typeof params.gate_offset === 'number') setGateOffset(params.gate_offset)
+    if (params.gate_direction === 'forward' || params.gate_direction === 'reverse')
+      setDirection(params.gate_direction)
+    if (params.gate_trigger_source === 'internal' || params.gate_trigger_source === 'external')
+      setTrigger(params.gate_trigger_source)
+    if (typeof params.overlap === 'boolean') setOverlap(params.overlap)
+    if (typeof params.stream === 'boolean') setStream(params.stream)
+    if (typeof params.pileup_correction === 'boolean') setPileup(params.pileup_correction)
   }
 
   return (
@@ -175,6 +194,11 @@ export function GatedPanel({ systemInfo, disabled, onAcquire }: Props) {
       <button type="button" onClick={submit} disabled={disabled}>
         {disabled ? 'Busy…' : 'Acquire'}
       </button>
+      <PresetSelector
+        mode="gated"
+        currentParams={buildParams() as unknown as Record<string, unknown>}
+        onLoad={applyPreset}
+      />
     </div>
   )
 }

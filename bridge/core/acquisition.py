@@ -431,6 +431,13 @@ class AcquisitionRunner:
         snapshot: dict[str, Any] = self.calibration_store.snapshot()
         return snapshot
 
+    def acquisition_context(self) -> dict[str, Any]:
+        """Calibration + temperature snapshot for the experiment log."""
+        return {
+            "calibration_state": self._calibration_snapshot(),
+            "temperatures": self._temperatures(),
+        }
+
     def _software_version(self) -> str:
         info = self._protocol.system_info
         if info:

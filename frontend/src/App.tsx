@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import './App.css'
 import { CalibrationPage } from './pages/CalibrationPage'
+import { ExperimentLogPage } from './pages/ExperimentLogPage'
 import { FLIMPage } from './pages/FLIMPage'
 import { GatedPage } from './pages/GatedPage'
 import { HealthPage } from './pages/HealthPage'
@@ -16,6 +17,7 @@ type Mode =
   | 'sweep'
   | 'calibration'
   | 'health'
+  | 'log'
 
 function App() {
   const [mode, setMode] = useState<Mode>('intensity')
@@ -71,6 +73,13 @@ function App() {
         >
           Health
         </button>
+        <button
+          type="button"
+          className={mode === 'log' ? 'active' : ''}
+          onClick={() => setMode('log')}
+        >
+          Log
+        </button>
       </nav>
       {mode === 'intensity' && <IntensityPage />}
       {mode === 'gated' && <GatedPage />}
@@ -79,6 +88,7 @@ function App() {
       {mode === 'sweep' && <SweepPage />}
       {mode === 'calibration' && <CalibrationPage />}
       {mode === 'health' && <HealthPage />}
+      {mode === 'log' && <ExperimentLogPage />}
     </>
   )
 }

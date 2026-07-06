@@ -6,6 +6,7 @@ import type {
   CalibrationStatus,
   CalibrationStepResult,
   DCRCurve,
+  ExperimentLogEntry,
   FLIMIrfParams,
   FLIMParams,
   FLIMResult,
@@ -15,6 +16,7 @@ import type {
   IntensityParams,
   JobStatus,
   OptimalParams,
+  Preset,
   Raw1BitParams,
   ScheduleRequest,
   ScheduleResult,
@@ -145,6 +147,44 @@ export function scheduleJob(request: ScheduleRequest): Promise<ScheduleResult> {
 
 export function getJobStatus(jobId: string): Promise<JobStatus> {
   return getJson<JobStatus>(`/api/acquire/schedule/${jobId}`)
+}
+
+export async function getExperimentLog(opts?: {
+  search?: string
+  limit?: number
+  offset?: number
+}): Promise<{ entries: ExperimentLogEntry[] }> {
+  const q = new URLSearchParams()
+  if (opts?.search) q.set('search', opts.search)
+  if (opts?.limit != null) q.set('limit', String(opts.limit))
+  if (opts?.offset != null) q.set('offset', String(opts.offset))
+  const suffix = q.toString() ? `?${q}` : ''
+  return getJson<{ entries: ExperimentLogEntry[] }>(`/api/experiment-log${suffix}`)
+}
+
+export function rerunEntry(
+  entryId: string,
+  overrides: Record<string, unknown> = {},
+): Promise<AcquireResult> {
+  return postJson<AcquireResult>(`/api/experiment-log/${entryId}/rerun`, { overrides })
+}
+
+export function savePreset(
+  name: string,
+  mode: string,
+  params: Record<string, unknown>,
+): Promise<{ status: string; preset_id: string }> {
+  return postJson('/api/presets', { name, mode, params })
+}
+
+export function listPresets(mode: string): Promise<Preset[]> {
+  return getJson<Preset[]>(`/api/presets?mode=${encodeURIComponent(mode)}`)
+}
+
+export async function deletePreset(presetId: string): Promise<{ status: string }> {
+  const res = await fetch(`/api/presets/${presetId}`, { method: 'DELETE' })
+  if (!res.ok) throw new Error(`delete preset -> ${res.status}`)
+  return (await res.json()) as { status: string }
 }
 
 export function wsUrl(): string {

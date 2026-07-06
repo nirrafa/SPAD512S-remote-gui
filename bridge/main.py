@@ -73,7 +73,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.checkpoints = checkpoint_store
     app.state.sweep = SweepRunner(runner, instrument, checkpoint_store)
 
-    experiment_log = ExperimentLog()
+    experiment_log = ExperimentLog(Path(settings.data_root) / "experiments.sqlite")
     app.state.experiment_log = experiment_log
     scheduler = Scheduler(runner, experiment_log)
     app.state.scheduler = scheduler
