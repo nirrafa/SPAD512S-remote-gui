@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { IntensityParams, SystemInfo } from '../api/types'
+import { PresetSelector } from './PresetSelector'
 
 interface Props {
   systemInfo: SystemInfo | null
@@ -22,15 +23,25 @@ export function IntensityPanel({ systemInfo, disabled, onAcquire }: Props) {
   const widths = systemInfo?.valid_roi_widths ?? FALLBACK_WIDTHS
   const unit = bitDepth === 1 || bitDepth === 4 ? 'µs' : 'ms'
 
-  const submit = () => {
-    onAcquire({
-      bit_depth: bitDepth,
-      integration_time: integrationTime,
-      iterations,
-      roi_width: roiWidth,
-      overlap,
-      pileup_correction: pileup,
-    })
+  const currentParams: IntensityParams = {
+    bit_depth: bitDepth,
+    integration_time: integrationTime,
+    iterations,
+    roi_width: roiWidth,
+    overlap,
+    pileup_correction: pileup,
+  }
+
+  const submit = () => onAcquire(currentParams)
+
+  const applyPreset = (params: Record<string, unknown>) => {
+    if (typeof params.bit_depth === 'number') setBitDepth(params.bit_depth)
+    const it = params.integration_time ?? params.integration_time_ms
+    if (typeof it === 'number') setIntegrationTime(it)
+    if (typeof params.iterations === 'number') setIterations(params.iterations)
+    if (typeof params.roi_width === 'number') setRoiWidth(params.roi_width)
+    if (typeof params.overlap === 'boolean') setOverlap(params.overlap)
+    if (typeof params.pileup_correction === 'boolean') setPileup(params.pileup_correction)
   }
 
   return (
@@ -85,6 +96,11 @@ export function IntensityPanel({ systemInfo, disabled, onAcquire }: Props) {
       <button type="button" disabled={disabled} onClick={submit}>
         {disabled ? 'Busy…' : 'Acquire'}
       </button>
+      <PresetSelector
+        mode="intensity"
+        currentParams={currentParams as unknown as Record<string, unknown>}
+        onLoad={applyPreset}
+      />
     </div>
   )
 }

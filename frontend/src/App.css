@@ -214,6 +214,42 @@ button.link {
   color: #aaa;
 }
 
+.preset-selector {
+  margin-top: 0.75rem;
+  padding-top: 0.6rem;
+  border-top: 1px solid #333;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+.preset-row {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+}
+.preset-row select,
+.preset-row input {
+  flex: 1;
+  min-width: 0;
+}
+
+.log-table {
+  border-collapse: collapse;
+  font-size: 0.8rem;
+  width: 100%;
+}
+.log-table th,
+.log-table td {
+  border: 1px solid #333;
+  padding: 0.3rem 0.6rem;
+  text-align: left;
+  vertical-align: top;
+}
+.log-table .result-cell {
+  max-width: 320px;
+  overflow-wrap: anywhere;
+}
+
 .phasor {
   background: #111;
   border: 1px solid #333;

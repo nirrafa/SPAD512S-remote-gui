@@ -22,9 +22,9 @@
 | 9 | Sweeps, scheduling & resilience | ✅ Done | test_06 14/14, test_12 9/9 |
 | 10 | Data handling & reducer | ✅ Done | test_09 18/18 + compat 3/3 |
 | 11 | Front-end visualization | Features done; test_10 Playwright gate → Phase 13 | 0 / 12 (browser gate deferred) |
-| 12 | Experiment log & presets | Not started | 0 / 16 |
+| 12 | Experiment log & presets | ✅ Done | 16 / 16 |
 | 13 | Integration & hardware bring-up | Not started | 0 / 11 |
-| **Total** | Phases 0–11 done (11 = features + unit tests; browser E2E gate deferred to 13) | | **167 / 202 pre-dev tests passing** (test_10 needs the Playwright `spa_client` harness, stood up in Phase 13; prior 151 figure double-counted the default `tests/` suite) |
+| **Total** | Phases 0–12 done (11 browser E2E gate deferred to 13) | | **179 / 202 pre-dev tests passing** (remaining: test_10 viz + test_15 E2E, both need the Playwright `spa_client` harness stood up in Phase 13) |
 
 > Note: the 202 collected pre-dev tests exceed the plan's original 185 estimate; per-file counts (e.g. `test_02` = 26, not 11) differ from the plan's mapping table. The remaining ~35 non-passing are **Phases 11–13**: `test_10` visualization (12, browser), `test_11` reproducibility/log/presets (16), `test_15` end-to-end (11). All prior in-scope deferrals are resolved (`test_13` health-poll → Phase 8; `test_12` sweep/disconnect → Phase 9). Three code-review rounds have been applied (B-01..B-31 fixed; B-32..B-35 logged for hardware bring-up).
 
@@ -62,6 +62,28 @@ Copy this block for each new entry. Most recent session goes on top.
 ---
 
 <!-- Add new entries below this line, most recent first -->
+
+### 2026-07-06 — Phase 12: experiment log, presets & re-run
+
+**Phase(s):** 12
+**Duration:** ~2h
+**Who:** Nir + Claude (inline)
+
+#### Done
+- **SQLite-backed `ExperimentLog`** (`bridge/services/experiment_log.py`) under `data_root` (lazy-init like `CheckpointStore`): experiments + presets tables. Log carries params, result path, calibration state, temperatures, sample/experiment/notes, timestamp; presets store a reusable param set per mode. Kept the `add()`/`update()` API the scheduler uses.
+- **Routes** (`bridge/routes/experiments.py`): `GET /api/experiment-log?search=&limit=&offset=`, `POST /api/experiment-log/{id}/rerun` (optional `{overrides}`), presets CRUD (`POST /api/presets`, `GET /api/presets?mode=`, `GET`/`DELETE /api/presets/{id}`). Auto-logging via `_record_acquisition` in `acquire.py` (intensity/gated/raw-1bit/flim on `done`); runner gained `acquisition_context()`.
+- **Frontend:** `ExperimentLogPage` (Log tab — table, search, re-run), `PresetSelector` (save/load/delete) wired into Intensity + Gated panels; api client + types.
+- **Verified live** via preview browser: acquire → Log tab shows the entry with result path; saved preset "standard_int" appears in the dropdown; re-run → acq00002 + "Re-run done" banner. No console errors.
+
+#### Tests
+- `test_11` **16/16**; full backend suite **26/26**; **179/202** pre_dev (up from 167). `ruff` + `mypy` clean; frontend `tsc`/`oxlint`/`vitest` (20) + `vite build` green.
+- Added `.delete()` to the pre_dev `BridgeTestClient` harness (test_11 needs it).
+
+#### Deferred / notes
+- Long `running` acquisitions and per-sweep-point logging aren't auto-logged yet (route-level logs `done` only); scheduled jobs are logged via the scheduler. test_11 covers single-shot.
+
+#### Next
+- Phase 13: Playwright `spa_client` harness (closes test_10 + test_15), E2E scenarios, hardware bring-up.
 
 ### 2026-07-06 — Phase 11: in-browser visualization
 

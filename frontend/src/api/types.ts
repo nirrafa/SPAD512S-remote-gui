@@ -245,3 +245,26 @@ export interface StopResult {
   in_flight_completed?: boolean
   instrument_state?: string
 }
+
+export interface ExperimentLogEntry {
+  id: string
+  mode: string
+  params: Record<string, unknown>
+  result_path?: string | null
+  calibration_state?: Record<string, unknown>
+  temperatures?: Record<string, number>
+  sample_name?: string | null
+  experiment_name?: string | null
+  notes?: string | null
+  scheduled?: boolean
+  state?: string | null
+  timestamp?: string
+}
+
+export interface Preset {
+  id: string
+  name: string
+  mode: string
+  params: Record<string, unknown>
+  created_at?: number
+}

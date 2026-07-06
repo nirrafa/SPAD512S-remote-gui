@@ -26,11 +26,37 @@ from bridge.protocol.decoder import (
     OptimalGated,
     parse_optimal_gated,
 )
+from bridge.services.experiment_log import ExperimentLog
 from bridge.services.flim import process_flim
 from bridge.services.scheduler import Scheduler
 from bridge.services.sweep import SweepRunner
 
 router = APIRouter(prefix="/api/acquire")
+
+
+def _record_acquisition(
+    request: Request, *, mode: str, params_model: BaseModel, result: dict[str, object]
+) -> None:
+    """Auto-log a completed single-shot acquisition to the experiment log.
+
+    Only fully-finished runs (``done``/``aborted``) are recorded — long async
+    runs that return ``running`` have no result path yet.
+    """
+    if result.get("status") not in ("done", "aborted"):
+        return
+    log: ExperimentLog = request.app.state.experiment_log
+    runner: AcquisitionRunner = request.app.state.runner
+    ctx = runner.acquisition_context()
+    log.log_acquisition(
+        mode=mode,
+        params=params_model.model_dump(exclude_none=True),
+        result_path=result.get("host_path"),  # type: ignore[arg-type]
+        calibration_state=ctx["calibration_state"],
+        temperatures=ctx["temperatures"],
+        sample_name=getattr(params_model, "sample_name", None),
+        experiment_name=getattr(params_model, "experiment_name", None),
+        notes=getattr(params_model, "notes", None),
+    )
 
 # /api/acquire/status briefly waits for the next batch boundary so a freshly
 # tripped auto-protect threshold is reflected (the abort fires at the boundary,
@@ -250,6 +276,7 @@ async def acquire_intensity(request: Request, params: IntensityRequest) -> dict[
     result["calibration_valid"] = calibration_valid
     if not calibration_valid:
         result["warning"] = "Noise / dead-pixel calibration missing or stale."
+    _record_acquisition(request, mode="intensity", params_model=params, result=result)
     return result
 
 
@@ -291,6 +318,7 @@ async def acquire_raw_1bit(request: Request, params: Raw1BitRequest) -> dict[str
     )
     result["decode_method"] = "binary_unpack"
     result["bit_depth"] = 1
+    _record_acquisition(request, mode="raw1bit", params_model=params, result=result)
     return result
 
 
@@ -355,7 +383,7 @@ async def acquire_gated(request: Request, params: GatedRequest) -> dict[str, obj
     if params.gate_trigger_source not in ("internal", "external"):
         return {"status": "error", "message": f"invalid trigger {params.gate_trigger_source}"}
 
-    return await runner.run_gated(
+    result = await runner.run_gated(
         GatedParams(
             bit_depth=params.bit_depth,
             integration_time=params.resolved_integration_time,
@@ -376,6 +404,8 @@ async def acquire_gated(request: Request, params: GatedRequest) -> dict[str, obj
             run_reducer=params.run_reducer,
         )
     )
+    _record_acquisition(request, mode="gated", params_model=params, result=result)
+    return result
 
 
 class FLIMRequest(BaseModel):
@@ -425,4 +455,5 @@ async def acquire_flim(request: Request, params: FLIMRequest) -> dict[str, objec
         request.app.state, "flim_irf_calibrated", False
     ):
         result["warning"] = "FLIM IRF not calibrated"
+    _record_acquisition(request, mode="flim", params_model=params, result=result)
     return result
