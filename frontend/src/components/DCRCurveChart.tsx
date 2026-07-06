@@ -22,6 +22,7 @@ export function DCRCurveChart({ curve }: Props) {
 
   return (
     <svg
+      id="dcr-curve"
       className="dcr-chart"
       viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
       role="img"

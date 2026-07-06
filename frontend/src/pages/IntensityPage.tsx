@@ -1,20 +1,35 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { getStatus, getSystemInfo } from '../api/client'
 import type { IntensityParams, SystemInfo } from '../api/types'
 import { ImageCanvas } from '../components/ImageCanvas'
 import { IntensityPanel } from '../components/IntensityPanel'
+import { PixelHistogram } from '../components/PixelHistogram'
 import { ProgressBar } from '../components/ProgressBar'
+import { ROIOverlay } from '../components/ROIOverlay'
+import { RoiStatsTable } from '../components/RoiStatsTable'
 import { StatusBanner } from '../components/StatusBanner'
 import { useAcquisition } from '../hooks/useAcquisition'
+import { useROI, type RoiMode } from '../hooks/useROI'
 import { useWebSocket } from '../hooks/useWebSocket'
-import { COLORMAP_NAMES, type ColormapName } from '../utils/colormap'
+import { COLORMAP_NAMES, decodeBase64, type ColormapName } from '../utils/colormap'
+import {
+  autoStretchRange,
+  roiStats,
+  scaleRoi,
+  type IntensityRange,
+} from '../utils/imageProcessing'
+
+const DISPLAY = 512
 
 export function IntensityPage() {
   const live = useWebSocket()
   const acq = useAcquisition()
+  const roi = useROI()
   const [systemInfo, setSystemInfo] = useState<SystemInfo | null>(null)
   const [vendorConnected, setVendorConnected] = useState(false)
   const [colormap, setColormap] = useState<ColormapName>('viridis')
+  const [roiMode, setRoiMode] = useState<RoiMode>('none')
+  const [range, setRange] = useState<IntensityRange | null>(null)
 
   useEffect(() => {
     getStatus()
@@ -27,9 +42,25 @@ export function IntensityPage() {
 
   const busy = live.busy || acq.acquiring
   const preview = live.preview ?? acq.preview
+  const values = useMemo(() => (preview ? decodeBase64(preview.data) : null), [preview])
+
+  const statRows = useMemo(() => {
+    if (!preview || !values) return []
+    const sx = preview.width / DISPLAY
+    const sy = preview.height / DISPLAY
+    return roi.rois.map((r) => ({
+      roi: r,
+      stats: roiStats(values, preview.width, preview.height, scaleRoi(r, sx, sy)),
+    }))
+  }, [roi.rois, preview, values])
 
   const onAcquire = (params: IntensityParams) => {
+    setRange(null)
     void acq.acquire(params)
+  }
+
+  const onAutoStretch = () => {
+    if (values) setRange(autoStretchRange(values))
   }
 
   return (
@@ -67,12 +98,56 @@ export function IntensityPage() {
                 ))}
               </select>
             </label>
+            <div className="roi-tools" role="group" aria-label="ROI tools">
+              {(['none', 'rectangle', 'freehand'] as RoiMode[]).map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  className={roiMode === m ? 'active' : ''}
+                  onClick={() => setRoiMode(m)}
+                >
+                  {m === 'none' ? 'pan' : m}
+                </button>
+              ))}
+            </div>
+            <button type="button" data-testid="auto-stretch" disabled={!values} onClick={onAutoStretch}>
+              auto-stretch
+            </button>
+            {range && (
+              <span className="muted">
+                range {range.min}–{range.max}
+              </span>
+            )}
+            {roi.rois.length > 0 && (
+              <button type="button" className="link" onClick={roi.clear}>
+                clear ROIs
+              </button>
+            )}
             {acq.lastResult?.host_path && (
               <span className="muted">saved: {acq.lastResult.host_path}</span>
             )}
           </div>
           <ProgressBar value={live.progress} visible={busy} />
-          <ImageCanvas preview={preview} colormap={colormap} />
+          <ImageCanvas
+            id="image-canvas"
+            preview={preview}
+            colormap={colormap}
+            range={range}
+            overlay={
+              <ROIOverlay
+                size={DISPLAY}
+                mode={roiMode}
+                rois={roi.rois}
+                onAddRectangle={roi.addRectangle}
+                onAddFreehand={roi.addFreehand}
+                onRemove={roi.remove}
+              />
+            }
+          />
+          <h3>ROI statistics</h3>
+          <RoiStatsTable rows={statRows} onRemove={roi.remove} />
+          <h3>Pixel histogram</h3>
+          <PixelHistogram values={values} />
         </section>
       </div>
     </main>

@@ -727,12 +727,12 @@ frontend/src/utils/
 
 ### Validation gate
 
-- [ ] `pre_dev_tests/test_10_visualization.py` — all 12 tests pass (via Playwright/browser automation)
-- [ ] Browser: draw rectangular ROI on intensity image → see pixel stats
-- [ ] Browser: gated acquisition → draw ROI → decay curve updates
-- [ ] Browser: FLIM acquisition → phasor scatter renders with semi-circle
-- [ ] Browser: lifetime map shows false-color pixels
-- [ ] Browser: pixel histogram visible after intensity acquisition
+- [~] `pre_dev_tests/test_10_visualization.py` — needs the `spa_client` Playwright harness; **deferred to Phase 13** (stood up once for both test_10 and test_15). Pure viz logic covered by vitest (`imageProcessing.test.ts`, `phasor.test.ts`, `viz.test.tsx`).
+- [x] Browser: draw rectangular ROI on intensity image → see pixel stats (verified live via preview: ROI "A", area 3416, mean 151.4)
+- [x] Browser: gated acquisition → draw ROI → decay curve updates (20-point polyline across gate steps)
+- [x] Browser: FLIM acquisition → phasor scatter renders with semi-circle (4096 points)
+- [x] Browser: lifetime map shows false-color pixels (+ colorbar 0–6 ns)
+- [x] Browser: pixel histogram visible after intensity acquisition (48 bins)
 
 ---
 
@@ -954,3 +954,5 @@ Phases 4–12 can be parallelized after Phase 3, but the recommended order above
 | 2026-07-04 | Scheduled jobs = pure asyncio (no APScheduler); jobs land in an experiment-log groundwork table | Keeps deps minimal; Phase 12 extends the log |
 | 2026-07-05 | Reducer port defaults to **full-frame** crop (original hardcoded 512×256 is experiment-specific), configurable per call | Downstream compat verified by `tests/test_data_compat.py` |
 | 2026-07-06 | Post-review safety fixes: `STOPPING`∈`is_busy`; auto-protect actually sends `V,<vex_max>`; health config bounded; hard 50 V Vex ceiling; readings carry `valid`+`last_updated`; WS `alarm` frames captured in the GUI | Empirical Phase 8 review (B-27..B-31); the cosmetic-stop finding was already fixed by Phase 9 |
+| 2026-07-06 | Phase 11 viz all client-side on the **downsampled preview** (ROI stats, histogram, auto-stretch, decay); ROIs drawn in 512-display space, scaled to preview grid for stats | Full arrays stay on host (constraints); the preview is enough for interactive QA and keeps the browser light |
+| 2026-07-06 | Phase 11 pure math in unit-tested utils (`imageProcessing.ts` phasor/ROI/histogram/stretch, `phasor.ts` first-harmonic); `test_10`'s Playwright `spa_client` gate **deferred to Phase 13** | Standing up the browser harness once serves both test_10 and test_15 (E2E); features verified live against the mock via the preview browser in the meantime |

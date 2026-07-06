@@ -21,10 +21,10 @@
 | 8 | Safety, health & auto-protect | ✅ Done | test_08 17/17, test_13 5/5 (health-poll resolved) |
 | 9 | Sweeps, scheduling & resilience | ✅ Done | test_06 14/14, test_12 9/9 |
 | 10 | Data handling & reducer | ✅ Done | test_09 18/18 + compat 3/3 |
-| 11 | Front-end visualization | Not started | 0 / 12 |
+| 11 | Front-end visualization | Features done; test_10 Playwright gate → Phase 13 | 0 / 12 (browser gate deferred) |
 | 12 | Experiment log & presets | Not started | 0 / 16 |
 | 13 | Integration & hardware bring-up | Not started | 0 / 11 |
-| **Total** | Phases 0–10 done | | **167 / 202 pre-dev tests passing** (prior 151 figure double-counted the default `tests/` suite; measured pre-Phase-9 baseline was 134) |
+| **Total** | Phases 0–11 done (11 = features + unit tests; browser E2E gate deferred to 13) | | **167 / 202 pre-dev tests passing** (test_10 needs the Playwright `spa_client` harness, stood up in Phase 13; prior 151 figure double-counted the default `tests/` suite) |
 
 > Note: the 202 collected pre-dev tests exceed the plan's original 185 estimate; per-file counts (e.g. `test_02` = 26, not 11) differ from the plan's mapping table. The remaining ~35 non-passing are **Phases 11–13**: `test_10` visualization (12, browser), `test_11` reproducibility/log/presets (16), `test_15` end-to-end (11). All prior in-scope deferrals are resolved (`test_13` health-poll → Phase 8; `test_12` sweep/disconnect → Phase 9). Three code-review rounds have been applied (B-01..B-31 fixed; B-32..B-35 logged for hardware bring-up).
 
@@ -62,6 +62,25 @@ Copy this block for each new entry. Most recent session goes on top.
 ---
 
 <!-- Add new entries below this line, most recent first -->
+
+### 2026-07-06 — Phase 11: in-browser visualization
+
+**Phase(s):** 11
+**Duration:** ~2h
+**Who:** Nir + Claude (inline)
+
+#### Done
+- Pure viz math in unit-tested utils: `utils/imageProcessing.ts` (ROI stats for rectangle + freehand via point-in-polygon, pixel histogram, percentile auto-stretch + remap, per-step decay from the gated preview stack, ROI grid-scaling) and `utils/phasor.ts` (first-harmonic phasor point + phasor→lifetime). 12 new vitest cases.
+- Components: `ROIOverlay` (rectangle + freehand draw over the canvas, labeled ROIs, remove handle), `RoiStatsTable`, `PixelHistogram` (`#pixel-histogram`), `DecayCurve` (`#decay-curve`), `Colorbar`; enhanced `ImageCanvas` (accepts `id`, stretch `range`, overlay children, zoom in/out buttons), `PhasorScatter` (`#phasor-plot` + axis labels), `DCRCurveChart` (`#dcr-curve` id).
+- Wired pages: Intensity (ROI tools + stats + auto-stretch + histogram), Gated (ROI + per-ROI decay curve from `stepPreviews`), FLIM (lifetime map `#lifetime-map` + colorbar + phasor).
+- Decision: all viz runs on the **downsampled preview** (full arrays stay on host); ROIs drawn in 512-display space and scaled to the preview grid for stats.
+- **Verified live** against mock via the preview browser: intensity ROI "A" (area 3416, mean 151.4) + 48-bin histogram + auto-stretch (range 2–212); FLIM phasor 4096 pts + lifetime map + 0–6 ns colorbar; gated 20-point decay curve. No console errors. `tsc`/`oxlint`/`vitest` (20 tests) + `vite build` all green.
+
+#### Deferred
+- `test_10`'s `spa_client` needs a Playwright harness — stood up in Phase 13 alongside `test_15` (E2E).
+
+#### Next
+- Phase 12 (experiment log, presets, re-run — `test_11`), then Phase 13 (Playwright E2E for test_10 + test_15 + hardware bring-up).
 
 ### 2026-07-06 — Review round 3: safety-control fixes + full doc sync
 
