@@ -6,7 +6,7 @@ import {
   setVex,
   updateHealthConfig,
 } from '../api/client'
-import type { HealthConfig, HealthReadings } from '../api/types'
+import type { Alarm, HealthConfig, HealthReadings } from '../api/types'
 import { AlarmBanner } from '../components/AlarmBanner'
 import { StatusBanner } from '../components/StatusBanner'
 import { TemperatureGauge } from '../components/TemperatureGauge'
@@ -41,21 +41,34 @@ export function HealthPage() {
   }, [refresh])
 
   const saveConfig = async (update: Partial<HealthConfig>) => {
-    await updateHealthConfig(update)
-    const next = await getHealthConfig()
-    setConfig(next)
+    try {
+      await updateHealthConfig(update)
+      setConfig(await getHealthConfig())
+    } catch (err: unknown) {
+      setError(`failed to save config: ${String(err)}`)
+    }
   }
 
   const applyVex = async (confirm: boolean) => {
     setVexNotice(null)
-    const res = await setVex(vexInput, confirm)
-    if (res.requires_confirmation) {
-      setVexNotice(`Vex ${vexInput} V exceeds the safe max (${res.vex_max} V). Confirm to apply.`)
-      return
+    try {
+      const res = await setVex(vexInput, confirm)
+      if (res.requires_confirmation) {
+        setVexNotice(`Vex ${vexInput} V exceeds the safe max (${res.vex_max} V). Confirm to apply.`)
+        return
+      }
+      if (res.status === 'error') setError(res.message ?? 'failed to set Vex')
+      refresh()
+    } catch (err: unknown) {
+      setError(`failed to set Vex: ${String(err)}`)
     }
-    if (res.status === 'error') setError(res.message ?? 'failed to set Vex')
-    refresh()
   }
+
+  // Merge poll-based alarms with live WebSocket alarms (transient alarms that
+  // trip and clear between the 1s polls), deduplicated by type.
+  const alarms: Alarm[] = [...(readings?.alarms ?? []), ...live.alarms].filter(
+    (a, i, arr) => arr.findIndex((b) => b.type === a.type) === i,
+  )
 
   return (
     <main className="app">
@@ -72,7 +85,7 @@ export function HealthPage() {
       <div className="layout">
         <section>
           <h3>Alarms</h3>
-          <AlarmBanner alarms={readings?.alarms ?? []} />
+          <AlarmBanner alarms={alarms} />
 
           <h3>Temperatures</h3>
           <div className="gauges">

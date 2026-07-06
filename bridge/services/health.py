@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import time
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -37,6 +38,7 @@ class HealthConfig:
             "vex_max": self.vex_max,
             "expected_laser_hz": self.expected_laser_hz,
             "laser_tolerance": self.laser_tolerance,
+            "missing_laser_hz": self.missing_laser_hz,
         }
 
 
@@ -54,6 +56,7 @@ class Readings:
     saturated: bool = False
     valid: bool = False
     vex_reduced: bool = False
+    last_updated: float | None = None
     alarms: list[dict[str, Any]] = field(default_factory=list)
 
 
@@ -107,12 +110,14 @@ class HealthMonitor:
         if force or not self._instrument.is_busy:
             with contextlib.suppress(NotConnectedError, ProtocolError, ValueError):
                 await self._read_instrument()
+        await self._apply_auto_protect()
         self._evaluate_alarms()
-        await self._auto_protect()
+        await self._broadcast_new_alarms()
         return self._readings
 
     async def _read_instrument(self) -> None:
         if not self._protocol.connected:
+            self._readings.valid = False  # don't present stale values as live
             return
         health_text = await self._protocol.send_command(commands.readout())
         volt_text = await self._protocol.send_command(commands.voltages())
@@ -130,6 +135,7 @@ class HealthMonitor:
         r.vq = vq
         r.vex = vex
         r.valid = True
+        r.last_updated = time.time()
 
     # --- alarm evaluation -----------------------------------------------------
 
@@ -157,21 +163,31 @@ class HealthMonitor:
 
     # --- auto-protect ---------------------------------------------------------
 
-    async def _auto_protect(self) -> None:
+    async def _apply_auto_protect(self) -> None:
+        """Take protective action + update flags (before alarms are evaluated)."""
         r = self._readings
         cfg = self.config
         if r.valid and r.temp_chip > cfg.temp_threshold_chip and self._instrument.is_busy:
             await self._instrument.request_stop("over_temperature")
         if r.valid and r.vex > cfg.vex_max:
+            # Actually command the safe bias, not just flag it — but only when the
+            # socket is free (never interleave a set during an acquisition).
+            if not self._instrument.is_busy and self._protocol.connected:
+                with contextlib.suppress(NotConnectedError, ProtocolError):
+                    await self._protocol.send_command(commands.set_vex(cfg.vex_max))
+                    r.vex = cfg.vex_max
             r.vex_reduced = True
-        await self._broadcast_new_alarms()
+        elif r.vex_reduced and r.valid and r.vex <= cfg.vex_max:
+            r.vex_reduced = False  # unlatch once the bias is back within range
 
     async def _broadcast_new_alarms(self) -> None:
         current = {a["type"]: a for a in self._readings.alarms}
-        for atype, payload in current.items():
-            if atype not in self._active_alarm_types:
-                await self._hub.broadcast_alarm(payload)
+        # Update the active-set BEFORE awaiting so a concurrent poll can't
+        # re-classify the same alarm as new and double-broadcast it.
+        new_payloads = [p for t, p in current.items() if t not in self._active_alarm_types]
         self._active_alarm_types = set(current)
+        for payload in new_payloads:
+            await self._hub.broadcast_alarm(payload)
 
     # --- payload --------------------------------------------------------------
 
@@ -189,6 +205,8 @@ class HealthMonitor:
             "frame_frequency_hz": r.frame_frequency_hz,
             "saturated": r.saturated,
             "vex_reduced": r.vex_reduced,
+            "readings_valid": r.valid,
+            "last_updated": r.last_updated,
             "alarms": list(r.alarms),
         }
 
@@ -199,6 +217,9 @@ class HealthMonitor:
         for key, value in values.items():
             if hasattr(self.config, key) and value is not None:
                 setattr(self.config, key, float(value))
+        # A too-small interval would busy-loop R+V on the single socket and
+        # starve user commands; keep a hard floor regardless of the request.
+        self.config.poll_interval_s = max(self.config.poll_interval_s, 0.1)
 
 
 def _laser_in_range(freq: float, cfg: HealthConfig) -> bool:
