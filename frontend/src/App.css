@@ -87,6 +87,7 @@ header h1 {
   display: flex;
   gap: 1rem;
   align-items: center;
+  flex-wrap: wrap;
   margin-bottom: 0.5rem;
   font-size: 0.85rem;
 }
@@ -131,6 +132,86 @@ header h1 {
   color: #ffb74d;
   font-size: 0.85rem;
   margin: 0 0 0.5rem;
+}
+
+.image-canvas-stage {
+  position: relative;
+  display: inline-block;
+  line-height: 0;
+}
+.image-canvas-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.roi-overlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.roi-overlay .roi rect,
+.roi-overlay .roi polygon {
+  fill: rgba(79, 156, 255, 0.12);
+  stroke: #4f9cff;
+  stroke-width: 1.5;
+}
+.roi-overlay .roi text {
+  fill: #fff;
+  font-size: 13px;
+  font-weight: 600;
+}
+.roi-overlay .roi-remove {
+  fill: #e05c8a;
+  cursor: pointer;
+  pointer-events: auto;
+}
+.roi-overlay .roi-draft {
+  fill: rgba(255, 255, 255, 0.08);
+  stroke: #fff;
+  stroke-dasharray: 4 3;
+}
+
+.roi-tools {
+  display: flex;
+  gap: 0.25rem;
+}
+.roi-tools button.active {
+  background: #1976d2;
+  color: #fff;
+}
+
+button.link {
+  background: none;
+  border: none;
+  color: #4f9cff;
+  cursor: pointer;
+  padding: 0;
+  font-size: inherit;
+}
+
+.roi-stats {
+  border-collapse: collapse;
+  font-size: 0.8rem;
+  margin-bottom: 0.75rem;
+}
+.roi-stats th,
+.roi-stats td {
+  border: 1px solid #333;
+  padding: 0.2rem 0.5rem;
+  text-align: right;
+}
+.roi-stats th:first-child,
+.roi-stats td:first-child {
+  text-align: left;
+}
+
+.histogram,
+.decay-curve,
+.phasor,
+.colorbar {
+  max-width: 100%;
+  color: #aaa;
 }
 
 .phasor {

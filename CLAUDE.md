@@ -67,7 +67,7 @@ npm test                         # run tests
 
 ## Status
 
-**Phases 0–10 complete** (bridge + mock + SPA: intensity, gated, FLIM, raw 1-bit, sweeps/scheduled/abort, calibration, safety/health, data handling) + 3 code-review rounds applied (B-01..B-31 fixed; B-32..B-35 open for hardware bring-up). `main` is clean and green. Next: hardware smoke test (see the "Mock vs. real hardware" checklist in [constraints](docs/constraints.md)), then Phases 11 (visualization), 12 (log/presets), 13 (E2E + bring-up).
+**Phases 0–11 complete** (bridge + mock + SPA: intensity, gated, FLIM, raw 1-bit, sweeps/scheduled/abort, calibration, safety/health, data handling, in-browser visualization) + 3 code-review rounds applied (B-01..B-31 fixed; B-32..B-35 open for hardware bring-up). Phase 11's `test_10` Playwright browser gate is deferred to Phase 13 (stood up once for both test_10 and test_15); features are verified live against the mock and covered by vitest unit tests. `main` is clean and green. Next: Phase 12 (experiment log/presets), then Phase 13 (Playwright E2E + hardware bring-up). Hardware validation is deferred until the camera is back (see the "Mock vs. real hardware" checklist in [constraints](docs/constraints.md)).
 
 ## Testing
 

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { acquireFlim, calibrateFlimIrf, getStatus } from '../api/client'
 import type { FLIMIrfParams, FLIMParams, FLIMResult } from '../api/types'
+import { Colorbar } from '../components/Colorbar'
 import { FLIMPanel } from '../components/FLIMPanel'
 import { ImageCanvas } from '../components/ImageCanvas'
 import { PhasorScatter } from '../components/PhasorScatter'
@@ -89,7 +90,10 @@ export function FLIMPage() {
             )}
           </div>
           <h3>Lifetime map</h3>
-          <ImageCanvas preview={result?.lifetime_map ?? null} colormap={colormap} />
+          <ImageCanvas id="lifetime-map" preview={result?.lifetime_map ?? null} colormap={colormap} />
+          {result?.lifetime_map && (
+            <Colorbar colormap={colormap} min={0} max={result.lifetime_map.max_value} />
+          )}
           <h3>Phasor</h3>
           <PhasorScatter phasor={result?.phasor ?? null} />
         </section>
