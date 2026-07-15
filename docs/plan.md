@@ -850,6 +850,23 @@ frontend/src/components/
 
 ---
 
+## Phase 14 — Live view (post-Phase-13 addition, not in the original PRD)
+
+**Goal:** a spartan on-demand live view for hosts that can't run the vendor's own GUI (e.g. macOS) — a focus/alignment aid, not a scientific acquisition.
+
+### Design
+- No native vendor "streaming" command exists — every acquisition is one request/`DONE`-terminated response. Live view is a client-driven poll loop over the existing single-shot intensity primitive, not a bridge-owned background task.
+- `AcquisitionRunner.capture_live_frame` — same busy guard/socket serialization as any acquisition, but skips persistence (no PNG/sidecar/reducer) and the experiment log entirely.
+- `POST /api/live/frame` (`bridge/routes/live.py`) — `bit_depth`/`integration_time`/`roi_width`, `iterations` hardcoded to 1.
+- Front-end `LivePage`: "Capture once" (single request) or "Start live" (recursive `setTimeout`, 300 ms, never overlapping requests, stops outright on `vendor disconnected`, always stops on tab-switch/unmount).
+
+### Validation gate
+- [x] `tests/test_live.py` (8 tests): preview returned, zero disk writes, zero experiment-log entries, repeatable, invalid-param rejection, disconnected-vendor rejection, busy-guard rejection.
+- [x] Full regression green (`pytest` 34/34, `ruff`/`mypy` clean; frontend `tsc`/`oxlint`/`vitest`(20)/build green).
+- [x] Verified live against the mock: single capture renders; streaming fires one request per 300 ms tick; stop button halts the loop immediately (request count stops growing); switching tabs away from Live also halts it; zero files under `data_root` and zero experiment-log entries after a live session.
+
+---
+
 ## Dependency graph
 
 ```

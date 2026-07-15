@@ -41,6 +41,7 @@
 - Full data arrays stay on the host; browser receives downsampled previews only (base64 uint8, ≤256², server auto-stretched; colormap applied client-side).
 - Full data download is on-demand, not automatic.
 - The WebSocket is the live channel; the client reconnects with backoff and must tolerate malformed frames.
+- **Live view (`/api/live/frame`)** is a spartan single-frame-per-request focus/alignment aid for hosts without the vendor GUI (e.g. macOS) — not a scientific acquisition. It writes nothing to disk, adds no experiment-log entry, and shares the same busy guard as every other acquisition. There is no vendor "streaming" command; the frontend drives the cadence itself (single click, or a recursive-`setTimeout` poll loop at 300 ms while a "live" toggle is on) so the single TCP socket is held only for each capture's duration, never continuously, and the loop always stops on tab-switch/unmount.
 
 ## Mock vs. real hardware — must be validated on the camera (Phase 13)
 

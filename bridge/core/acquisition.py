@@ -252,6 +252,44 @@ class AcquisitionRunner:
         await self._hub.broadcast_state(self._instrument.snapshot())
         return result
 
+    async def capture_live_frame(self, params: IntensityParams) -> dict[str, Any]:
+        """One quick, unpersisted intensity frame for the on-demand live view.
+
+        Unlike :meth:`run_intensity`, nothing is written to disk, no reducer
+        runs, and nothing is logged to the experiment log — this is a
+        focus/alignment aid, not a scientific acquisition. Callers pass
+        ``iterations=1``; the busy guard and single-socket serialization are
+        the same as any other acquisition, so this only ever holds the socket
+        for the duration of one short capture.
+        """
+        if self._instrument.is_busy:
+            return {"status": "error", "message": "instrument busy"}
+
+        await self._instrument.set(InstrumentStatus.ACQUIRING)
+        result: dict[str, Any]
+        try:
+            data, completed, _aborted = await self._acquire_io(params)
+            stack = await asyncio.to_thread(
+                decode_intensity,
+                data,
+                bit_depth=params.bit_depth,
+                rows=self._sensor_size,
+                im_width=params.roi_width,
+                iterations=completed,
+                pileup=params.pileup_correction,
+            )
+            result = {"status": "done", "preview": make_preview(stack[0])}
+        except TimeoutError:
+            await self._protocol.reset()
+            result = {"status": "timeout", "message": "live capture timed out"}
+        except NotConnectedError:
+            result = {"status": "error", "message": "vendor disconnected"}
+        except ProtocolError as exc:
+            result = {"status": "error", "message": str(exc)}
+        finally:
+            await self._instrument.set(InstrumentStatus.IDLE)
+        return result
+
     async def _acquire_io(
         self, params: IntensityParams
     ) -> tuple[bytes, int, bool]:
