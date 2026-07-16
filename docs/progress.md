@@ -24,9 +24,10 @@
 | 11 | Front-end visualization | ✅ Done (browser gate closed in 13) | 12 / 12 |
 | 12 | Experiment log & presets | ✅ Done | 16 / 16 |
 | 13 | Integration & E2E (hardware bring-up deferred) | ✅ Done | 11 / 11 |
-| **Total** | Phases 0–13 done; hardware bring-up deferred until the camera returns | | **202 / 202 pre-dev tests passing** ✅ |
+| 14 | Live view (post-Phase-13 addition, not in the original PRD) | ✅ Done | `tests/test_live.py` 8/8 |
+| **Total** | Phases 0–14 done; hardware bring-up deferred until the camera returns | | **202 / 202 pre-dev tests passing** ✅ (+ 8 live-view regression tests outside the PRD spec) |
 
-> Note: the 202 collected pre-dev tests exceed the plan's original 185 estimate; per-file counts (e.g. `test_02` = 26, not 11) differ from the plan's mapping table. The remaining ~35 non-passing are **Phases 11–13**: `test_10` visualization (12, browser), `test_11` reproducibility/log/presets (16), `test_15` end-to-end (11). All prior in-scope deferrals are resolved (`test_13` health-poll → Phase 8; `test_12` sweep/disconnect → Phase 9). Three code-review rounds have been applied (B-01..B-31 fixed; B-32..B-35 logged for hardware bring-up).
+> Note: the 202 collected pre-dev tests exceed the plan's original 185 estimate; per-file counts (e.g. `test_02` = 26, not 11) differ from the plan's mapping table. All prior in-scope deferrals are resolved (`test_13` health-poll → Phase 8; `test_12` sweep/disconnect → Phase 9; `test_10`/`test_15` browser gates → Phase 13). Three code-review rounds have been applied (B-01..B-31, B-36 fixed; B-32..B-35, B-37 logged for hardware bring-up).
 
 ---
 
@@ -62,6 +63,28 @@ Copy this block for each new entry. Most recent session goes on top.
 ---
 
 <!-- Add new entries below this line, most recent first -->
+
+### 2026-07-15 — Phase 14: live view
+
+**Phase(s):** 14 (post-Phase-13 addition; user-requested, not in the original PRD)
+**Duration:** ~1h
+**Who:** Nir + Claude (inline)
+
+#### Done
+- User asked for a spartan "Live" tab for hosts that can't run the vendor's own GUI (macOS): either a single-click capture, or a stream of one frame every ~300 ms, only while explicitly toggled on — never holding the vendor's single TCP socket when idle.
+- Confirmed the vendor protocol has no native streaming/video command (checked `cSPAD.py`'s `get_gated_intensity`/`get_intensity` — every path is one request, one `DONE`-terminated response). Live view is therefore a **client-driven poll loop** over the existing intensity primitive, not a bridge background task.
+- `AcquisitionRunner.capture_live_frame` (`bridge/core/acquisition.py`): reuses `_acquire_io`/`decode_intensity`/`make_preview`, same busy guard as any acquisition, but **skips persistence and experiment-log writes** entirely — this is a focus aid, not a scientific acquisition.
+- `POST /api/live/frame` (`bridge/routes/live.py`), registered in `main.py`.
+- `LivePage` (frontend): "Capture once" + "Start/Stop live" toggle (recursive `setTimeout`, 300 ms, no overlapping requests, stops outright on `vendor disconnected`, always stops on unmount/tab-switch). New "Live" tab in `App.tsx`.
+- `tests/test_live.py` (8 tests): preview returned; zero disk writes; zero experiment-log entries; repeatable; invalid bit_depth/roi_width rejected; disconnected-vendor rejected; busy-guard rejected (mirrors the existing `test_command_rejected_while_busy` synchronous pattern rather than real threading, to avoid timing flakiness).
+- **Verified live** via the preview browser: single capture renders a real frame; streaming fires exactly one `/api/live/frame` request per 300 ms tick (confirmed via server logs); clicking Stop halts the loop immediately (request count stops growing, verified over a follow-up wait); switching to another tab also halts an active stream (unmount cleanup); `data_root` and the experiment log stayed empty throughout an entire live session.
+- Full regression: `pytest` 34/34 (was 26), `ruff`/`mypy` clean; frontend `tsc`/`oxlint`/`vitest` (20 tests, unchanged — no new frontend unit tests needed, page is thin) + `vite build` green.
+
+#### Notes
+- Doesn't touch the pre-dev spec (`pre_dev_tests/`) since live view isn't in the PRD — it's tracked separately as Phase 14 and via `tests/test_live.py`.
+
+#### Next
+- Only the hardware smoke test remains (needs the camera — see the "Mock vs. real hardware" checklist in [constraints](constraints.md)).
 
 ### 2026-07-06 — Phase 13: Playwright E2E harness — 202/202 green
 

@@ -247,6 +247,18 @@ export interface StopResult {
   instrument_state?: string
 }
 
+export interface LiveFrameParams {
+  bit_depth?: number
+  integration_time?: number
+  roi_width?: number
+}
+
+export interface LiveFrameResult {
+  status: 'done' | 'error' | 'timeout'
+  message?: string
+  preview?: Preview
+}
+
 export interface ExperimentLogEntry {
   id: string
   mode: string

@@ -15,6 +15,8 @@ import type {
   HealthReadings,
   IntensityParams,
   JobStatus,
+  LiveFrameParams,
+  LiveFrameResult,
   OptimalParams,
   Preset,
   Raw1BitParams,
@@ -147,6 +149,10 @@ export function scheduleJob(request: ScheduleRequest): Promise<ScheduleResult> {
 
 export function getJobStatus(jobId: string): Promise<JobStatus> {
   return getJson<JobStatus>(`/api/acquire/schedule/${jobId}`)
+}
+
+export function captureLiveFrame(params: LiveFrameParams = {}): Promise<LiveFrameResult> {
+  return postJson<LiveFrameResult>('/api/live/frame', params)
 }
 
 export async function getExperimentLog(opts?: {
