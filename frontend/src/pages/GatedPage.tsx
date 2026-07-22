@@ -8,10 +8,11 @@ import { ImageCanvas } from '../components/ImageCanvas'
 import { ProgressBar } from '../components/ProgressBar'
 import { ROIOverlay } from '../components/ROIOverlay'
 import { StatusBanner } from '../components/StatusBanner'
+import { WBRangeControl } from '../components/WBRangeControl'
 import { useROI, type RoiMode } from '../hooks/useROI'
 import { useWebSocket } from '../hooks/useWebSocket'
 import { COLORMAP_NAMES, decodeBase64, type ColormapName } from '../utils/colormap'
-import { decayFromStack, scaleRoi } from '../utils/imageProcessing'
+import { decayFromStack, scaleRoi, type IntensityRange } from '../utils/imageProcessing'
 
 const DISPLAY = 512
 
@@ -27,6 +28,7 @@ export function GatedPage() {
   const [result, setResult] = useState<AcquireResult | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [gateParams, setGateParams] = useState<GatedParams | null>(null)
+  const [range, setRange] = useState<IntensityRange | null>(null)
 
   useEffect(() => {
     getStatus()
@@ -41,6 +43,7 @@ export function GatedPage() {
   const stepCount = live.stepCount || (result?.total_gate_steps ?? 0)
   const clampedStep = Math.min(step, Math.max(stepCount - 1, 0))
   const preview = live.stepPreviews[clampedStep] ?? result?.preview ?? null
+  const previewValues = useMemo(() => (preview ? decodeBase64(preview.data) : null), [preview])
 
   const decodedStack = useMemo(
     () => live.stepPreviews.map((p) => (p ? decodeBase64(p.data) : null)),
@@ -130,11 +133,13 @@ export function GatedPage() {
                 </button>
               ))}
             </div>
+            <WBRangeControl range={range} onChange={setRange} values={previewValues} />
             {roi.rois.length > 0 && (
               <button type="button" className="link" onClick={roi.clear}>
                 clear ROIs
               </button>
             )}
+            {result?.dark_corrected && <span className="ok">dark-corrected</span>}
             {result?.host_path && <span className="muted">saved: {result.host_path}</span>}
           </div>
           <ProgressBar value={live.progress} visible={busy} />
@@ -143,6 +148,7 @@ export function GatedPage() {
             id="image-canvas"
             preview={preview}
             colormap={colormap}
+            range={range}
             overlay={
               <ROIOverlay
                 size={DISPLAY}

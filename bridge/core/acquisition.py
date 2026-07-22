@@ -24,6 +24,11 @@ from bridge.protocol.decoder import (
     decode_intensity,
     integration_time_unit,
 )
+from bridge.services.dark_reference import (
+    apply_dark_correction,
+    gated_fingerprint,
+    intensity_fingerprint,
+)
 from bridge.services.data_location import DataLocation
 from bridge.services.file_writer import build_png_metadata, name_suffix, save_acquisition
 from bridge.services.preview import make_preview
@@ -62,6 +67,8 @@ class IntensityParams:
         experiment_name: str | None = None,
         notes: str | None = None,
         run_reducer: bool = False,
+        dark_reference_id: str | None = None,
+        purpose: str | None = None,
     ) -> None:
         self.bit_depth = bit_depth
         self.integration_time = integration_time
@@ -74,6 +81,9 @@ class IntensityParams:
         self.experiment_name = experiment_name
         self.notes = notes
         self.run_reducer = run_reducer
+        self.dark_reference_id = dark_reference_id
+        # e.g. "intensity_dark_reference" — marks a reference measurement.
+        self.purpose = purpose
 
     def png_metadata_kwargs(self) -> dict[str, Any]:
         return {}
@@ -93,6 +103,8 @@ class IntensityParams:
             "sample_name": self.sample_name,
             "experiment_name": self.experiment_name,
             "notes": self.notes,
+            "dark_reference_id": self.dark_reference_id,
+            "purpose": self.purpose,
         }
 
 
@@ -117,6 +129,8 @@ class GatedParams:
         experiment_name: str | None = None,
         notes: str | None = None,
         run_reducer: bool = False,
+        dark_reference_id: str | None = None,
+        purpose: str | None = None,
     ) -> None:
         self.bit_depth = bit_depth
         self.integration_time = integration_time
@@ -135,6 +149,10 @@ class GatedParams:
         self.experiment_name = experiment_name
         self.notes = notes
         self.run_reducer = run_reducer
+        self.dark_reference_id = dark_reference_id
+        # e.g. "gated_dark_reference" — marks a run whose data serves as a
+        # reference measurement rather than a scientific acquisition.
+        self.purpose = purpose
 
     @property
     def effective_steps(self) -> int:
@@ -174,6 +192,8 @@ class GatedParams:
             "sample_name": self.sample_name,
             "experiment_name": self.experiment_name,
             "notes": self.notes,
+            "dark_reference_id": self.dark_reference_id,
+            "purpose": self.purpose,
         }
 
 
@@ -196,8 +216,17 @@ class AcquisitionRunner:
         # Set after construction (the monitor depends on the runner's siblings).
         self.health_monitor: Any | None = None
         self.calibration_store: Any | None = None
+        self.dark_reference_store: Any | None = None
 
-    async def run_intensity(self, params: IntensityParams) -> dict[str, Any]:
+    async def run_intensity(
+        self, params: IntensityParams, *, keep_stack: bool = False
+    ) -> dict[str, Any]:
+        """Run an intensity acquisition.
+
+        ``keep_stack`` (in-process callers only, e.g. the dark-reference
+        builder) always awaits completion and attaches the raw decoded stack
+        under ``"_stack"``; it must be popped before serialization.
+        """
         if self._instrument.is_busy:
             return {"status": "error", "message": "instrument busy"}
 
@@ -208,8 +237,11 @@ class AcquisitionRunner:
         if params.iterations > 1:
             await self._hub.broadcast_busy(mode="intensity", progress=0.0)
 
-        task = asyncio.create_task(self._intensity_op(params))
+        task = asyncio.create_task(self._intensity_op(params, keep_stack=keep_stack))
         self.current = {"mode": "intensity", "task": task, "result": None}
+
+        if keep_stack:
+            return await task
 
         # Wait slightly past the op's own timeout so a `timeout` result is
         # captured here rather than returned as `running`.
@@ -219,16 +251,35 @@ class AcquisitionRunner:
             return task.result()
         return {"status": "running", "mode": "intensity", "total_frames": params.iterations}
 
-    async def _intensity_op(self, params: IntensityParams) -> dict[str, Any]:
+    async def _intensity_op(
+        self, params: IntensityParams, *, keep_stack: bool = False
+    ) -> dict[str, Any]:
         rows = self._sensor_size
         unit = integration_time_unit(params.bit_depth)
         started_at = _now_iso()
+
+        reference, dark_provenance, ref_error = self._resolve_dark_reference(
+            params.dark_reference_id, intensity_fingerprint(params)
+        )
+        if ref_error is not None:
+            await self._instrument.set(InstrumentStatus.IDLE)
+            await self._hub.broadcast_state(self._instrument.snapshot())
+            return {"status": "error", "message": ref_error}
 
         result: dict[str, Any]
         try:
             data, completed, aborted = await self._acquire_io(params)
             result = await asyncio.to_thread(
-                self._postprocess, data, params, rows, unit, completed, started_at
+                self._postprocess,
+                data,
+                params,
+                rows,
+                unit,
+                completed,
+                started_at,
+                reference=reference,
+                dark_provenance=dark_provenance,
+                keep_stack=keep_stack,
             )
             if aborted:
                 result["status"] = "aborted"
@@ -240,6 +291,8 @@ class AcquisitionRunner:
             result = {"status": "error", "message": "vendor disconnected"}
         except ProtocolError as exc:
             result = {"status": "error", "message": str(exc)}
+        except ValueError as exc:
+            result = {"status": "error", "message": f"dark correction failed: {exc}"}
         finally:
             await self._instrument.set(InstrumentStatus.IDLE)
 
@@ -358,6 +411,10 @@ class AcquisitionRunner:
         unit: str,
         completed: int,
         started_at: str,
+        *,
+        reference: np.ndarray | None = None,
+        dark_provenance: dict[str, Any] | None = None,
+        keep_stack: bool = False,
     ) -> dict[str, Any]:
         stack = decode_intensity(
             data,
@@ -367,9 +424,14 @@ class AcquisitionRunner:
             iterations=completed,
             pileup=params.pileup_correction,
         )
+        # Correction shapes only the derived view; the persisted stack below
+        # stays raw (see docs/design_gated_dcr_correction.md).
+        display_stack = stack
+        if reference is not None:
+            display_stack = apply_dark_correction(stack, reference)
         result: dict[str, Any] = {
             "status": "done",
-            "preview": make_preview(stack[0]),
+            "preview": make_preview(display_stack[0]),
             "total_frames": completed,
             "integration_time_unit": unit,
             "bytes": len(data),
@@ -383,8 +445,15 @@ class AcquisitionRunner:
                 vendor_frames=completed,
                 gate_steps=None,
                 started_at=started_at,
+                dark_correction=dark_provenance,
             )
         )
+        if dark_provenance is not None:
+            result["dark_corrected"] = True
+            result["dark_reference_id"] = params.dark_reference_id
+            result["dark_reference_path"] = dark_provenance.get("reference_npy_path")
+        if keep_stack:
+            result["_stack"] = stack
         return result
 
     # --- Persistence ------------------------------------------------------------
@@ -399,6 +468,7 @@ class AcquisitionRunner:
         vendor_frames: int,
         gate_steps: int | None,
         started_at: str,
+        dark_correction: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Write the PNG folder + sidecar (and optionally run the reducer).
 
@@ -433,6 +503,7 @@ class AcquisitionRunner:
             timestamp_end=_now_iso(),
             png_metadata=metadata,
             frame_count=len(saved.png_files),
+            dark_correction=dark_correction,
         )
         result: dict[str, Any] = {
             "host_path": self._location.display_path(saved.acq_dir),
@@ -487,16 +558,23 @@ class AcquisitionRunner:
 
     # --- Gated ----------------------------------------------------------------
 
-    async def run_gated(self, params: GatedParams) -> dict[str, Any]:
+    async def run_gated(
+        self, params: GatedParams, *, keep_stack: bool = False
+    ) -> dict[str, Any]:
         """Run a gated acquisition synchronously (no busy/timeout spec to honor,
-        so the request awaits completion and always returns its full result)."""
+        so the request awaits completion and always returns its full result).
+
+        ``keep_stack`` attaches the raw decoded stack under ``"_stack"`` for
+        in-process callers (the dark-reference builder); it must be popped
+        before the result is serialized.
+        """
         if self._instrument.is_busy:
             return {"status": "error", "message": "instrument busy"}
 
         await self._instrument.set(InstrumentStatus.ACQUIRING)
         await self._hub.broadcast_busy(mode="gated", progress=0.0)
         try:
-            return await self._gated_op(params)
+            return await self._gated_op(params, keep_stack=keep_stack)
         except NotConnectedError:
             return {"status": "error", "message": "vendor disconnected"}
         except ProtocolError as exc:
@@ -505,11 +583,65 @@ class AcquisitionRunner:
             await self._instrument.set(InstrumentStatus.IDLE)
             await self._hub.broadcast_state(self._instrument.snapshot())
 
-    async def _gated_op(self, params: GatedParams) -> dict[str, Any]:
+    def _resolve_dark_reference(
+        self, dark_reference_id: str | None, current_fingerprint: dict[str, Any]
+    ) -> tuple[np.ndarray | None, dict[str, Any] | None, str | None]:
+        """Load + fingerprint-check the requested dark reference.
+
+        Returns ``(reference, provenance, error)`` — provenance carries the
+        reference's id/paths/creation time for the sidecar and experiment log.
+        Runs before any vendor command so a mismatched reference fails fast
+        without wasting an acquisition. Mode-specific fingerprints have
+        disjoint key sets, so a gated reference can never match an intensity
+        acquisition (or vice versa).
+        """
+        if dark_reference_id is None:
+            return None, None, None
+        if self.dark_reference_store is None:
+            return None, None, "dark reference store not configured"
+        stored = self.dark_reference_store.get(dark_reference_id)
+        if stored is None:
+            return None, None, f"dark reference {dark_reference_id!r} not found"
+        stored_fingerprint, reference = stored
+        if stored_fingerprint != current_fingerprint:
+            mismatched = sorted(
+                set(current_fingerprint) | set(stored_fingerprint)
+            )
+            mismatched = [
+                k
+                for k in mismatched
+                if stored_fingerprint.get(k) != current_fingerprint.get(k)
+            ]
+            return None, None, (
+                "dark reference config does not match the requested "
+                f"acquisition (differs on: {', '.join(mismatched)})"
+            )
+        meta = self.dark_reference_store.meta(dark_reference_id) or {}
+        provenance = {
+            "applied": True,
+            "reference_id": dark_reference_id,
+            "reference_npy_path": meta.get("npy_path"),
+            "reference_source_path": meta.get("source_path"),
+            "reference_created_at": meta.get("created_at"),
+            "reference_iterations": meta.get("iterations"),
+            "method": "clip(signal - reference, 0)",
+        }
+        return reference, provenance, None
+
+    async def _gated_op(
+        self, params: GatedParams, *, keep_stack: bool = False
+    ) -> dict[str, Any]:
         rows = self._sensor_size
         gate_steps = params.effective_steps
         started_at = _now_iso()
         n_frames = params.iterations * gate_steps
+
+        reference, dark_provenance, ref_error = self._resolve_dark_reference(
+            params.dark_reference_id, gated_fingerprint(params)
+        )
+        if ref_error is not None:
+            return {"status": "error", "message": ref_error}
+
         expected = n_frames * bytes_per_frame(
             params.bit_depth, rows, rows, params.pileup_correction
         )
@@ -544,10 +676,22 @@ class AcquisitionRunner:
             pileup=params.pileup_correction,
         )
 
+        # Correction shapes only the derived views (previews, result preview);
+        # the persisted raw stack below stays untouched — raw data is ground
+        # truth (see docs/design_gated_dcr_correction.md).
+        display_stack = stack
+        if reference is not None:
+            try:
+                display_stack = await asyncio.to_thread(
+                    apply_dark_correction, stack, reference
+                )
+            except ValueError as exc:
+                return {"status": "error", "message": f"dark correction failed: {exc}"}
+
         previews_sent = 0
         for step in range(gate_steps):
             await self._hub.broadcast_preview(
-                make_preview(stack[step]), index=step, count=gate_steps
+                make_preview(display_stack[step]), index=step, count=gate_steps
             )
             previews_sent += 1
 
@@ -560,10 +704,11 @@ class AcquisitionRunner:
             vendor_frames=params.iterations,
             gate_steps=gate_steps,
             started_at=started_at,
+            dark_correction=dark_provenance,
         )
-        return {
+        result: dict[str, Any] = {
             "status": "done",
-            "preview": make_preview(stack[0]),
+            "preview": make_preview(display_stack[0]),
             "total_gate_steps": gate_steps,
             "previews_sent": previews_sent,
             "total_frames": n_frames,
@@ -571,3 +716,10 @@ class AcquisitionRunner:
             "bytes": len(data),
             **persisted,
         }
+        if dark_provenance is not None:
+            result["dark_corrected"] = True
+            result["dark_reference_id"] = params.dark_reference_id
+            result["dark_reference_path"] = dark_provenance.get("reference_npy_path")
+        if keep_stack:
+            result["_stack"] = stack
+        return result

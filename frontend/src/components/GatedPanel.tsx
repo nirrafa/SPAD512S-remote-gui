@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { getOptimalParams } from '../api/client'
 import type { GatedParams, SystemInfo } from '../api/types'
+import { DarkReferenceControl } from './DarkReferenceControl'
 import { PresetSelector } from './PresetSelector'
 
 interface Props {
@@ -25,6 +26,7 @@ export function GatedPanel({ systemInfo, disabled, onAcquire }: Props) {
   const [stream, setStream] = useState(false)
   const [pileup, setPileup] = useState(false)
   const [arbitrary, setArbitrary] = useState('')
+  const [darkRefId, setDarkRefId] = useState('')
 
   const bitDepths = systemInfo?.valid_bit_depths.filter((b) => b >= 6) ?? GATED_BIT_DEPTHS
 
@@ -59,6 +61,7 @@ export function GatedPanel({ systemInfo, disabled, onAcquire }: Props) {
     stream,
     pileup_correction: pileup,
     arbitrary_steps: parseArbitrary(),
+    dark_reference_id: darkRefId || undefined,
   })
 
   const submit = () => onAcquire(buildParams())
@@ -188,6 +191,13 @@ export function GatedPanel({ systemInfo, disabled, onAcquire }: Props) {
         <input type="checkbox" checked={pileup} onChange={(e) => setPileup(e.target.checked)} />
         Pileup correction
       </label>
+      <DarkReferenceControl
+        mode="gated"
+        disabled={disabled}
+        buildParams={() => buildParams() as unknown as Record<string, unknown>}
+        value={darkRefId}
+        onChange={setDarkRefId}
+      />
       <button type="button" onClick={() => void fillOptimal()} disabled={disabled}>
         Auto-fill optimal
       </button>

@@ -47,9 +47,16 @@ def _record_acquisition(
     log: ExperimentLog = request.app.state.experiment_log
     runner: AcquisitionRunner = request.app.state.runner
     ctx = runner.acquisition_context()
+    logged_params: dict[str, object] = dict(params_model.model_dump(exclude_none=True))
+    if result.get("dark_corrected"):
+        # Record the applied correction with a pointer to the reference file,
+        # so the log entry alone documents how the derived views were produced.
+        logged_params["dark_corrected"] = True
+        logged_params["dark_reference_id"] = result.get("dark_reference_id")
+        logged_params["dark_reference_npy_path"] = result.get("dark_reference_path")
     log.log_acquisition(
         mode=mode,
-        params=params_model.model_dump(exclude_none=True),
+        params=logged_params,
         result_path=result.get("host_path"),  # type: ignore[arg-type]
         calibration_state=ctx["calibration_state"],
         temperatures=ctx["temperatures"],
@@ -85,6 +92,7 @@ class IntensityRequest(BaseModel):
     experiment_name: str | None = None
     notes: str | None = None
     run_reducer: bool = False
+    dark_reference_id: str | None = None
 
     @property
     def resolved_integration_time(self) -> float:
@@ -268,6 +276,7 @@ async def acquire_intensity(request: Request, params: IntensityRequest) -> dict[
             experiment_name=params.experiment_name,
             notes=params.notes,
             run_reducer=params.run_reducer,
+            dark_reference_id=params.dark_reference_id,
         )
     )
 
@@ -343,6 +352,7 @@ class GatedRequest(BaseModel):
     experiment_name: str | None = None
     notes: str | None = None
     run_reducer: bool = False
+    dark_reference_id: str | None = None
 
     @property
     def resolved_integration_time(self) -> float:
@@ -402,6 +412,7 @@ async def acquire_gated(request: Request, params: GatedRequest) -> dict[str, obj
             experiment_name=params.experiment_name,
             notes=params.notes,
             run_reducer=params.run_reducer,
+            dark_reference_id=params.dark_reference_id,
         )
     )
     _record_acquisition(request, mode="gated", params_model=params, result=result)

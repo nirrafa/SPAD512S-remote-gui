@@ -32,6 +32,7 @@ export interface IntensityParams {
   pileup_correction: boolean
   timeout_s?: number
   run_reducer?: boolean
+  dark_reference_id?: string
 }
 
 export interface Raw1BitParams {
@@ -57,6 +58,8 @@ export interface AcquireResult {
   bit_depth?: number
   calibration_valid?: boolean
   warning?: string
+  dark_corrected?: boolean
+  dark_reference_id?: string
 }
 
 export interface GatedParams {
@@ -73,6 +76,29 @@ export interface GatedParams {
   stream: boolean
   pileup_correction: boolean
   arbitrary_steps?: number[]
+  dark_reference_id?: string
+}
+
+export interface DarkReference {
+  id: string
+  created_at: number
+  mode: 'gated' | 'intensity'
+  fingerprint: Record<string, unknown>
+  iterations: number
+  gate_steps: number
+  npy_path?: string | null
+  source_path?: string | null
+}
+
+export interface DarkReferenceResult {
+  status: 'done' | 'error'
+  message?: string
+  reference_id?: string
+  reference_npy_path?: string
+  gate_steps?: number
+  iterations?: number
+  method?: 'median' | 'mean'
+  host_path?: string
 }
 
 export interface OptimalParams {

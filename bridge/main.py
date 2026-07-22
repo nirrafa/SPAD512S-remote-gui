@@ -18,6 +18,7 @@ from bridge.core.instrument import InstrumentState
 from bridge.core.ws_hub import WebSocketHub
 from bridge.protocol.client import ProtocolClient
 from bridge.routes import acquire, calibration, data, experiments, health, live, system, ws
+from bridge.services.dark_reference import DarkReferenceStore
 from bridge.services.data_location import DataLocation
 from bridge.services.experiment_log import ExperimentLog
 from bridge.services.health import HealthMonitor
@@ -72,6 +73,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     checkpoint_store = CheckpointStore(Path(settings.data_root) / "checkpoints.sqlite")
     app.state.checkpoints = checkpoint_store
     app.state.sweep = SweepRunner(runner, instrument, checkpoint_store)
+
+    dark_references = DarkReferenceStore(
+        Path(settings.data_root) / "dark_references.sqlite"
+    )
+    app.state.dark_references = dark_references
+    runner.dark_reference_store = dark_references
 
     experiment_log = ExperimentLog(Path(settings.data_root) / "experiments.sqlite")
     app.state.experiment_log = experiment_log

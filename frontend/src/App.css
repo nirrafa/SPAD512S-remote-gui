@@ -17,7 +17,8 @@ header h1 {
   font-size: 0.85rem;
   margin-bottom: 1rem;
 }
-.status-banner .ok {
+.status-banner .ok,
+.viewer-toolbar .ok {
   color: #4caf50;
 }
 .status-banner .err {
@@ -248,6 +249,29 @@ button.link {
 .log-table .result-cell {
   max-width: 320px;
   overflow-wrap: anywhere;
+}
+
+.wb-control {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+}
+.wb-control input[type='range'] {
+  width: 90px;
+}
+
+.dark-ref {
+  margin-top: 0.75rem;
+  padding-top: 0.6rem;
+  border-top: 1px solid #333;
+}
+.dark-ref h3 {
+  margin: 0 0 0.3rem;
+  font-size: 0.9rem;
+}
+.dark-ref p.muted {
+  font-size: 0.75rem;
+  margin: 0 0 0.5rem;
 }
 
 .phasor {
