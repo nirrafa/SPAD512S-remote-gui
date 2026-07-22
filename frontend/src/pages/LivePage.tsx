@@ -1,8 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { captureLiveFrame, getStatus } from '../api/client'
 import type { LiveFrameResult, Preview } from '../api/types'
 import { ImageCanvas } from '../components/ImageCanvas'
-import { COLORMAP_NAMES, type ColormapName } from '../utils/colormap'
+import { WBRangeControl } from '../components/WBRangeControl'
+import { COLORMAP_NAMES, decodeBase64, type ColormapName } from '../utils/colormap'
+import type { IntensityRange } from '../utils/imageProcessing'
 
 // Spartan by design: one frame per request, no persistence, no experiment
 // log entry. The client — not the bridge — decides the cadence, so the
@@ -17,6 +19,9 @@ export function LivePage() {
   const [live, setLive] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [range, setRange] = useState<IntensityRange | null>(null)
+
+  const previewValues = useMemo(() => (preview ? decodeBase64(preview.data) : null), [preview])
 
   const liveRef = useRef(false)
   const timerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
@@ -133,7 +138,10 @@ export function LivePage() {
         </div>
 
         <section className="viewer">
-          <ImageCanvas id="live-canvas" preview={preview} colormap={colormap} />
+          <div className="viewer-toolbar">
+            <WBRangeControl range={range} onChange={setRange} values={previewValues} />
+          </div>
+          <ImageCanvas id="live-canvas" preview={preview} colormap={colormap} range={range} />
         </section>
       </div>
     </main>

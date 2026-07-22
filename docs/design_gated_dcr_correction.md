@@ -213,6 +213,45 @@ correction file:
 - Locked down by `test_documentation_trail` (reads the real sidecar.json files and
   log entries through the full HTTP stack).
 
+### Intensity-mode dark correction (added 2026-08-05, user requirement)
+
+The same correction generalized to intensity acquisitions — an intensity stack is
+the degenerate ``gate_steps = 1`` case, so `build_reference`/`apply_dark_correction`
+are reused unchanged:
+
+- Service renamed `gated_dark_reference.py` → **`dark_reference.py`**;
+  `GatedDarkReferenceStore` → **`DarkReferenceStore`** with a `mode` column
+  ("gated"/"intensity") and `list(mode=...)` filtering. New
+  `intensity_fingerprint(params)`: bit_depth, integration_time, roi_width, overlap,
+  pileup_correction (iterations excluded, same per-iteration broadcast rule).
+  Fingerprint key sets are disjoint, so a gated reference can never match an
+  intensity acquisition (covered by a test).
+- `IntensityParams` gains `dark_reference_id` + `purpose`;
+  `run_intensity(keep_stack=True)` awaits completion for the in-process reference
+  builder; `_intensity_op` fast-fails on fingerprint mismatch before any vendor
+  command; `_postprocess` corrects the preview only (raw persisted + full
+  `dark_correction` sidecar block + experiment-log provenance, same as gated).
+- Routes: `POST /api/calibrate/intensity-dark-reference`,
+  `GET /api/calibration/dark-references?mode=` (replaces the gated-only list).
+- Frontend: the dark-ref panel section extracted into a reusable
+  **`DarkReferenceControl`** used by both `GatedPanel` and `IntensityPanel`;
+  dark-corrected badge on the Intensity page.
+- Tests: `tests/test_dark_reference.py` (renamed; 18 tests) — adds intensity
+  measure→correct→document, roi_width mismatch rejection, gated-vs-intensity
+  cross-mode rejection, mode-filtered listing.
+
+### WB slider (added 2026-08-05, closes the "related gap" above)
+
+**`WBRangeControl`** (`frontend/src/components/WBRangeControl.tsx`): manual min/max
+display-stretch sliders + auto (percentile) + reset, driving `ImageCanvas`'s
+existing `range` prop. Wired into **Intensity** (replacing the lone auto-stretch
+button — the Playwright hooks `data-testid="auto-stretch"` and the toolbar
+"range X–Y" text are preserved, test_10 still green), **Gated**, **Live**, and
+**FLIM** (lifetime map). Display-only; never modifies data. Verified live: pulling
+min up to 170 on a mock intensity image clips the gradient to the bright hotspot;
+the corrected-image use case ("lowest WB to see faint DCR") works by pulling max
+down.
+
 ## Later ideas (not v1)
 
 - Explicit time-dependent DCR model per pixel (e.g. saturating exponential

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { acquireFlim, calibrateFlimIrf, getStatus } from '../api/client'
 import type { FLIMIrfParams, FLIMParams, FLIMResult } from '../api/types'
 import { Colorbar } from '../components/Colorbar'
@@ -6,8 +6,10 @@ import { FLIMPanel } from '../components/FLIMPanel'
 import { ImageCanvas } from '../components/ImageCanvas'
 import { PhasorScatter } from '../components/PhasorScatter'
 import { StatusBanner } from '../components/StatusBanner'
+import { WBRangeControl } from '../components/WBRangeControl'
 import { useWebSocket } from '../hooks/useWebSocket'
-import { COLORMAP_NAMES, type ColormapName } from '../utils/colormap'
+import { COLORMAP_NAMES, decodeBase64, type ColormapName } from '../utils/colormap'
+import type { IntensityRange } from '../utils/imageProcessing'
 
 export function FLIMPage() {
   const live = useWebSocket()
@@ -17,6 +19,12 @@ export function FLIMPage() {
   const [calibrated, setCalibrated] = useState(false)
   const [result, setResult] = useState<FLIMResult | null>(null)
   const [colormap, setColormap] = useState<ColormapName>('viridis')
+  const [range, setRange] = useState<IntensityRange | null>(null)
+
+  const lifetimeValues = useMemo(
+    () => (result?.lifetime_map ? decodeBase64(result.lifetime_map.data) : null),
+    [result],
+  )
 
   useEffect(() => {
     getStatus()
@@ -90,7 +98,15 @@ export function FLIMPage() {
             )}
           </div>
           <h3>Lifetime map</h3>
-          <ImageCanvas id="lifetime-map" preview={result?.lifetime_map ?? null} colormap={colormap} />
+          <div className="viewer-toolbar">
+            <WBRangeControl range={range} onChange={setRange} values={lifetimeValues} />
+          </div>
+          <ImageCanvas
+            id="lifetime-map"
+            preview={result?.lifetime_map ?? null}
+            colormap={colormap}
+            range={range}
+          />
           {result?.lifetime_map && (
             <Colorbar colormap={colormap} min={0} max={result.lifetime_map.max_value} />
           )}

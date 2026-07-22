@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useState } from 'react'
-import { getOptimalParams, listGatedDarkReferences, measureGatedDarkReference } from '../api/client'
-import type { DarkReference, GatedParams, SystemInfo } from '../api/types'
+import { useState } from 'react'
+import { getOptimalParams } from '../api/client'
+import type { GatedParams, SystemInfo } from '../api/types'
+import { DarkReferenceControl } from './DarkReferenceControl'
 import { PresetSelector } from './PresetSelector'
 
 interface Props {
@@ -10,12 +11,6 @@ interface Props {
 }
 
 const GATED_BIT_DEPTHS = [6, 7, 8, 9, 10, 11, 12]
-
-function darkRefLabel(ref: DarkReference): string {
-  const fp = ref.fingerprint
-  const when = new Date(ref.created_at * 1000).toISOString().slice(5, 16).replace('T', ' ')
-  return `${ref.gate_steps} steps × ${fp.gate_step_size}ps, w=${fp.gate_width}ns · ${when}`
-}
 
 export function GatedPanel({ systemInfo, disabled, onAcquire }: Props) {
   const [bitDepth, setBitDepth] = useState(8)
@@ -31,20 +26,7 @@ export function GatedPanel({ systemInfo, disabled, onAcquire }: Props) {
   const [stream, setStream] = useState(false)
   const [pileup, setPileup] = useState(false)
   const [arbitrary, setArbitrary] = useState('')
-  const [darkRefs, setDarkRefs] = useState<DarkReference[]>([])
   const [darkRefId, setDarkRefId] = useState('')
-  const [measuringDark, setMeasuringDark] = useState(false)
-  const [darkMessage, setDarkMessage] = useState<string | null>(null)
-
-  const refreshDarkRefs = useCallback(() => {
-    listGatedDarkReferences()
-      .then((res) => setDarkRefs(res.references))
-      .catch(() => setDarkRefs([]))
-  }, [])
-
-  useEffect(() => {
-    refreshDarkRefs()
-  }, [refreshDarkRefs])
 
   const bitDepths = systemInfo?.valid_bit_depths.filter((b) => b >= 6) ?? GATED_BIT_DEPTHS
 
@@ -83,26 +65,6 @@ export function GatedPanel({ systemInfo, disabled, onAcquire }: Props) {
   })
 
   const submit = () => onAcquire(buildParams())
-
-  const measureDark = async () => {
-    setMeasuringDark(true)
-    setDarkMessage(null)
-    try {
-      const { dark_reference_id: _unused, ...params } = buildParams()
-      const res = await measureGatedDarkReference(params as unknown as Record<string, unknown>)
-      if (res.status === 'done' && res.reference_id) {
-        setDarkMessage(`Dark reference stored (${res.method}, ${res.gate_steps} steps).`)
-        setDarkRefId(res.reference_id)
-        refreshDarkRefs()
-      } else {
-        setDarkMessage(res.message ?? 'dark reference failed')
-      }
-    } catch (err: unknown) {
-      setDarkMessage(String(err))
-    } finally {
-      setMeasuringDark(false)
-    }
-  }
 
   const applyPreset = (params: Record<string, unknown>) => {
     if (typeof params.bit_depth === 'number') setBitDepth(params.bit_depth)
@@ -229,36 +191,17 @@ export function GatedPanel({ systemInfo, disabled, onAcquire }: Props) {
         <input type="checkbox" checked={pileup} onChange={(e) => setPileup(e.target.checked)} />
         Pileup correction
       </label>
-      <div className="dark-ref">
-        <h3>Dark-count correction</h3>
-        <p className="muted">
-          Cap the sensor, then measure a dark reference at the settings above. Selecting one
-          subtracts it from the next acquisitions (display only — raw data stays untouched).
-        </p>
-        <label>
-          Dark reference
-          <select value={darkRefId} onChange={(e) => setDarkRefId(e.target.value)}>
-            <option value="">— none (no correction) —</option>
-            {darkRefs.map((r) => (
-              <option key={r.id} value={r.id}>
-                {darkRefLabel(r)}
-              </option>
-            ))}
-          </select>
-        </label>
-        <button
-          type="button"
-          onClick={() => void measureDark()}
-          disabled={disabled || measuringDark}
-        >
-          {measuringDark ? 'Measuring dark…' : 'Measure dark reference (cap sensor)'}
-        </button>
-        {darkMessage && <p className="muted">{darkMessage}</p>}
-      </div>
+      <DarkReferenceControl
+        mode="gated"
+        disabled={disabled}
+        buildParams={() => buildParams() as unknown as Record<string, unknown>}
+        value={darkRefId}
+        onChange={setDarkRefId}
+      />
       <button type="button" onClick={() => void fillOptimal()} disabled={disabled}>
         Auto-fill optimal
       </button>
-      <button type="button" onClick={submit} disabled={disabled || measuringDark}>
+      <button type="button" onClick={submit} disabled={disabled}>
         {disabled ? 'Busy…' : 'Acquire'}
       </button>
       <PresetSelector

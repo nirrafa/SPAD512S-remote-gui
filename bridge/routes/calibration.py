@@ -18,14 +18,22 @@ from bridge.core.calibration_state import CalibrationStore
 from bridge.core.instrument import InstrumentState, InstrumentStatus
 from bridge.protocol import commands
 from bridge.protocol.client import NotConnectedError, ProtocolClient, ProtocolError
-from bridge.protocol.decoder import GATED_BIT_DEPTHS, bytes_per_frame, decode_intensity
-from bridge.services.gated_dark_reference import (
+from bridge.protocol.decoder import (
+    GATED_BIT_DEPTHS,
+    INT_BIT_DEPTHS,
+    ROI_WIDTHS_512,
+    ROI_WIDTHS_1024,
+    bytes_per_frame,
+    decode_intensity,
+)
+from bridge.services.dark_reference import (
     MIN_MEDIAN_REPEATS,
-    GatedDarkReferenceStore,
+    DarkReferenceStore,
     build_reference,
     gated_fingerprint,
+    intensity_fingerprint,
 )
-from bridge.services.sweep import _gated_params
+from bridge.services.sweep import _gated_params, _intensity_params
 
 router = APIRouter(prefix="/api/calibrate")
 status_router = APIRouter(prefix="/api/calibration")
@@ -191,7 +199,7 @@ async def measure_gated_dark_reference(
     any gated run, as a lab record."""
     protocol: ProtocolClient = request.app.state.protocol
     runner: AcquisitionRunner = request.app.state.runner
-    store: GatedDarkReferenceStore = request.app.state.dark_references
+    store: DarkReferenceStore = request.app.state.dark_references
 
     if not protocol.connected:
         return {"status": "error", "message": "vendor disconnected"}
@@ -222,6 +230,7 @@ async def measure_gated_dark_reference(
     host_path = result.get("host_path")
     method = "median" if params.iterations >= MIN_MEDIAN_REPEATS else "mean"
     reference_id = store.save(
+        mode="gated",
         fingerprint=gated_fingerprint(params),
         reference=reference,
         iterations=params.iterations,
@@ -259,10 +268,97 @@ async def measure_gated_dark_reference(
     }
 
 
-@status_router.get("/gated-dark-references")
-async def list_gated_dark_references(request: Request) -> dict[str, object]:
-    store: GatedDarkReferenceStore = request.app.state.dark_references
-    return {"references": store.list()}
+class IntensityDarkReferenceRequest(BaseModel):
+    """Mirrors ``IntensityRequest`` (minus naming/reducer/correction) — an
+    intensity dark reference is only valid for the exact config it was
+    measured with."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    bit_depth: int = 8
+    integration_time: float | None = None
+    integration_time_ms: float | None = None
+    iterations: int = 1
+    roi_width: int = 512
+    overlap: bool = False
+    pileup_correction: bool = False
+
+
+@router.post("/intensity-dark-reference")
+async def measure_intensity_dark_reference(
+    request: Request, body: IntensityDarkReferenceRequest
+) -> dict[str, object]:
+    """Measure a covered-sensor intensity acquisition and store its per-pixel
+    dark map (the ``gate_steps = 1`` case of the gated flow)."""
+    protocol: ProtocolClient = request.app.state.protocol
+    runner: AcquisitionRunner = request.app.state.runner
+    store: DarkReferenceStore = request.app.state.dark_references
+
+    if not protocol.connected:
+        return {"status": "error", "message": "vendor disconnected"}
+    sensor_size = protocol.system_info["sensor_size"] if protocol.system_info else 512
+    valid_widths = ROI_WIDTHS_1024 if sensor_size == 1024 else ROI_WIDTHS_512
+    if body.bit_depth not in INT_BIT_DEPTHS:
+        return {"status": "error", "message": f"invalid bit_depth {body.bit_depth}"}
+    if body.roi_width not in valid_widths:
+        return {"status": "error", "message": f"invalid roi_width {body.roi_width}"}
+    if body.iterations < 1:
+        return {"status": "error", "message": "iterations must be >= 1"}
+
+    params = _intensity_params(body.model_dump(exclude_none=True))
+    params.purpose = "intensity_dark_reference"
+    result = await runner.run_intensity(params, keep_stack=True)
+    stack = result.pop("_stack", None)
+    if result.get("status") != "done" or stack is None:
+        return result
+
+    reference = await asyncio.to_thread(
+        build_reference, stack, iterations=params.iterations, gate_steps=1
+    )
+    host_path = result.get("host_path")
+    method = "median" if params.iterations >= MIN_MEDIAN_REPEATS else "mean"
+    reference_id = store.save(
+        mode="intensity",
+        fingerprint=intensity_fingerprint(params),
+        reference=reference,
+        iterations=params.iterations,
+        source_path=str(host_path) if host_path else None,
+    )
+    reference_meta = store.meta(reference_id) or {}
+
+    ctx = runner.acquisition_context()
+    request.app.state.experiment_log.log_acquisition(
+        mode="intensity_dark_reference",
+        params={
+            **body.model_dump(exclude_none=True),
+            "purpose": "intensity_dark_reference",
+            "reference_id": reference_id,
+            "reference_npy_path": reference_meta.get("npy_path"),
+            "method": method,
+        },
+        result_path=str(host_path) if host_path else None,
+        calibration_state=ctx["calibration_state"],
+        temperatures=ctx["temperatures"],
+        notes="dark-count reference measurement (sensor capped)",
+    )
+
+    return {
+        "status": "done",
+        "reference_id": reference_id,
+        "reference_npy_path": reference_meta.get("npy_path"),
+        "iterations": params.iterations,
+        "method": method,
+        "setup_prompt": "Cap the sensor / ensure dark conditions before measuring.",
+        "host_path": host_path,
+    }
+
+
+@status_router.get("/dark-references")
+async def list_dark_references(
+    request: Request, mode: str | None = None
+) -> dict[str, object]:
+    store: DarkReferenceStore = request.app.state.dark_references
+    return {"references": store.list(mode)}
 
 
 def _dcr_curve(values: np.ndarray) -> dict[str, object]:

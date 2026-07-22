@@ -86,14 +86,17 @@ export function getCalibrationStatus(): Promise<CalibrationStatus> {
   return getJson<CalibrationStatus>('/api/calibration/status')
 }
 
-export function measureGatedDarkReference(
+export function measureDarkReference(
+  mode: 'gated' | 'intensity',
   params: Record<string, unknown>,
 ): Promise<DarkReferenceResult> {
-  return postJson<DarkReferenceResult>('/api/calibrate/gated-dark-reference', params)
+  return postJson<DarkReferenceResult>(`/api/calibrate/${mode}-dark-reference`, params)
 }
 
-export function listGatedDarkReferences(): Promise<{ references: DarkReference[] }> {
-  return getJson<{ references: DarkReference[] }>('/api/calibration/gated-dark-references')
+export function listDarkReferences(
+  mode: 'gated' | 'intensity',
+): Promise<{ references: DarkReference[] }> {
+  return getJson<{ references: DarkReference[] }>(`/api/calibration/dark-references?mode=${mode}`)
 }
 
 export function getDcrCurve(): Promise<DCRCurve> {

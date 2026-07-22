@@ -251,6 +251,15 @@ button.link {
   overflow-wrap: anywhere;
 }
 
+.wb-control {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+}
+.wb-control input[type='range'] {
+  width: 90px;
+}
+
 .dark-ref {
   margin-top: 0.75rem;
   padding-top: 0.6rem;

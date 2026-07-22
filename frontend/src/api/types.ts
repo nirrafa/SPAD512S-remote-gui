@@ -32,6 +32,7 @@ export interface IntensityParams {
   pileup_correction: boolean
   timeout_s?: number
   run_reducer?: boolean
+  dark_reference_id?: string
 }
 
 export interface Raw1BitParams {
@@ -81,6 +82,7 @@ export interface GatedParams {
 export interface DarkReference {
   id: string
   created_at: number
+  mode: 'gated' | 'intensity'
   fingerprint: Record<string, unknown>
   iterations: number
   gate_steps: number

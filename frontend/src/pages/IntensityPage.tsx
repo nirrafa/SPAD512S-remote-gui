@@ -8,16 +8,12 @@ import { ProgressBar } from '../components/ProgressBar'
 import { ROIOverlay } from '../components/ROIOverlay'
 import { RoiStatsTable } from '../components/RoiStatsTable'
 import { StatusBanner } from '../components/StatusBanner'
+import { WBRangeControl } from '../components/WBRangeControl'
 import { useAcquisition } from '../hooks/useAcquisition'
 import { useROI, type RoiMode } from '../hooks/useROI'
 import { useWebSocket } from '../hooks/useWebSocket'
 import { COLORMAP_NAMES, decodeBase64, type ColormapName } from '../utils/colormap'
-import {
-  autoStretchRange,
-  roiStats,
-  scaleRoi,
-  type IntensityRange,
-} from '../utils/imageProcessing'
+import { roiStats, scaleRoi, type IntensityRange } from '../utils/imageProcessing'
 
 const DISPLAY = 512
 
@@ -57,10 +53,6 @@ export function IntensityPage() {
   const onAcquire = (params: IntensityParams) => {
     setRange(null)
     void acq.acquire(params)
-  }
-
-  const onAutoStretch = () => {
-    if (values) setRange(autoStretchRange(values))
   }
 
   return (
@@ -110,19 +102,13 @@ export function IntensityPage() {
                 </button>
               ))}
             </div>
-            <button type="button" data-testid="auto-stretch" disabled={!values} onClick={onAutoStretch}>
-              auto-stretch
-            </button>
-            {range && (
-              <span className="muted">
-                range {range.min}–{range.max}
-              </span>
-            )}
+            <WBRangeControl range={range} onChange={setRange} values={values} />
             {roi.rois.length > 0 && (
               <button type="button" className="link" onClick={roi.clear}>
                 clear ROIs
               </button>
             )}
+            {acq.lastResult?.dark_corrected && <span className="ok">dark-corrected</span>}
             {acq.lastResult?.host_path && (
               <span className="muted">saved: {acq.lastResult.host_path}</span>
             )}

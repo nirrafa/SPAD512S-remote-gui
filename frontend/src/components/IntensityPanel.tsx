@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { IntensityParams, SystemInfo } from '../api/types'
+import { DarkReferenceControl } from './DarkReferenceControl'
 import { PresetSelector } from './PresetSelector'
 
 interface Props {
@@ -19,6 +20,7 @@ export function IntensityPanel({ systemInfo, disabled, onAcquire }: Props) {
   const [overlap, setOverlap] = useState(false)
   const [pileup, setPileup] = useState(false)
   const [runReducer, setRunReducer] = useState(true)
+  const [darkRefId, setDarkRefId] = useState('')
 
   const bitDepths = systemInfo?.valid_bit_depths ?? FALLBACK_BIT_DEPTHS
   const widths = systemInfo?.valid_roi_widths ?? FALLBACK_WIDTHS
@@ -32,6 +34,7 @@ export function IntensityPanel({ systemInfo, disabled, onAcquire }: Props) {
     overlap,
     pileup_correction: pileup,
     run_reducer: runReducer,
+    dark_reference_id: darkRefId || undefined,
   }
 
   const submit = () => onAcquire(currentParams)
@@ -104,6 +107,13 @@ export function IntensityPanel({ systemInfo, disabled, onAcquire }: Props) {
         />
         Run reducer (analysis-ready .npy)
       </label>
+      <DarkReferenceControl
+        mode="intensity"
+        disabled={disabled}
+        buildParams={() => currentParams as unknown as Record<string, unknown>}
+        value={darkRefId}
+        onChange={setDarkRefId}
+      />
       <button type="button" disabled={disabled} onClick={submit}>
         {disabled ? 'Busy…' : 'Acquire'}
       </button>

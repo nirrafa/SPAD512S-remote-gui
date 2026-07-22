@@ -1,6 +1,6 @@
-"""Gated dark-reference tests: pure correction math + route/runner integration.
+"""Dark-reference tests (gated + intensity): correction math + integration.
 
-The mock's synthetic gated data stands in for real DCR — the integration tests
+The mock's synthetic data stands in for real DCR — the integration tests
 verify the mechanics (measure → store → fingerprint-check → subtract → flag),
 not the physics.
 """
@@ -13,8 +13,8 @@ import numpy as np
 import pytest
 from bridge.config import Settings
 from bridge.main import create_app
-from bridge.services.gated_dark_reference import (
-    GatedDarkReferenceStore,
+from bridge.services.dark_reference import (
+    DarkReferenceStore,
     apply_dark_correction,
     build_reference,
 )
@@ -87,10 +87,11 @@ def test_apply_dark_correction_rejects_shape_mismatch() -> None:
 
 
 def test_store_round_trip(tmp_path: Path) -> None:
-    store = GatedDarkReferenceStore(tmp_path / "refs.sqlite")
+    store = DarkReferenceStore(tmp_path / "refs.sqlite")
     reference = np.random.default_rng(1).random((3, 4, 4)).astype(np.float32)
     fingerprint = {"bit_depth": 8, "gate_steps": 3}
     ref_id = store.save(
+        mode="gated",
         fingerprint=fingerprint,
         reference=reference,
         iterations=5,
@@ -145,7 +146,7 @@ def test_measure_and_list_dark_reference(client: TestClient) -> None:
     assert resp["method"] == "mean"  # 1 iteration
     assert resp["host_path"]  # raw dark acquisition persisted as a lab record
 
-    listing = client.get("/api/calibration/gated-dark-references").json()
+    listing = client.get("/api/calibration/dark-references").json()
     assert [r["id"] for r in listing["references"]] == [resp["reference_id"]]
     assert listing["references"][0]["fingerprint"]["gate_steps"] == 5
 
@@ -229,7 +230,7 @@ def test_documentation_trail(client: TestClient, tmp_path: Path) -> None:
     assert correction["reference_source_path"] == ref["host_path"]
     assert correction["method"] == "clip(signal - reference, 0)"
     # The store links back to the raw dark run it was built from.
-    listing = client.get("/api/calibration/gated-dark-references").json()
+    listing = client.get("/api/calibration/dark-references").json()
     assert listing["references"][0]["source_path"] == ref["host_path"]
 
     # --- experiment log: both sequences recorded with full params -------------
@@ -270,3 +271,82 @@ def test_persisted_raw_stack_is_not_corrected(client: TestClient, tmp_path: Path
         assert len(pngs) == 5
         assert all(p.stat().st_size > 0 for p in pngs)
     assert corrected_peak < 255  # sanity: correction actually shrank the view
+
+
+# --- intensity mode -----------------------------------------------------------
+
+INTENSITY_BODY = {
+    "bit_depth": 8,
+    "integration_time": 100,
+    "iterations": 1,
+    "roi_width": 512,
+}
+
+
+def test_intensity_measure_correct_and_document(client: TestClient, tmp_path: Path) -> None:
+    import json
+
+    ref = client.post("/api/calibrate/intensity-dark-reference", json=INTENSITY_BODY).json()
+    assert ref["status"] == "done"
+    assert ref["method"] == "mean"
+    assert ref["reference_npy_path"].endswith(".npy")
+
+    listing = client.get("/api/calibration/dark-references?mode=intensity").json()
+    assert [r["id"] for r in listing["references"]] == [ref["reference_id"]]
+    assert listing["references"][0]["mode"] == "intensity"
+    assert listing["references"][0]["gate_steps"] == 1  # degenerate intensity case
+
+    resp = client.post(
+        "/api/acquire/intensity",
+        json={**INTENSITY_BODY, "dark_reference_id": ref["reference_id"]},
+    ).json()
+    assert resp["status"] == "done"
+    assert resp["dark_corrected"] is True
+    assert resp["dark_reference_path"] == ref["reference_npy_path"]
+
+    folders = sorted((tmp_path / "intensity_images").iterdir())
+    assert len(folders) == 2  # dark run + corrected signal run, both persisted raw
+    dark_sidecar = json.loads((folders[0] / "sidecar.json").read_text())
+    assert dark_sidecar["purpose"] == "intensity_dark_reference"
+    signal_sidecar = json.loads((folders[1] / "sidecar.json").read_text())
+    correction = signal_sidecar["dark_correction"]
+    assert correction["reference_id"] == ref["reference_id"]
+    assert correction["reference_source_path"] == ref["host_path"]
+
+    entries = client.get("/api/experiment-log").json()["entries"]
+    assert [e["mode"] for e in entries] == ["intensity_dark_reference", "intensity"]
+    assert entries[1]["params"]["dark_corrected"] is True
+
+
+def test_intensity_fingerprint_mismatch_rejected(client: TestClient) -> None:
+    ref = client.post("/api/calibrate/intensity-dark-reference", json=INTENSITY_BODY).json()
+    resp = client.post(
+        "/api/acquire/intensity",
+        json={**INTENSITY_BODY, "roi_width": 256, "dark_reference_id": ref["reference_id"]},
+    ).json()
+    assert resp["status"] == "error"
+    assert "roi_width" in resp["message"]
+    assert client.get("/api/status").json()["instrument_state"] == "idle"
+
+
+def test_gated_reference_never_matches_intensity_acquisition(client: TestClient) -> None:
+    # Disjoint fingerprint key sets: using a gated reference id on an intensity
+    # acquisition must always be rejected, whatever the shared values are.
+    ref = client.post("/api/calibrate/gated-dark-reference", json=GATED_BODY).json()
+    resp = client.post(
+        "/api/acquire/intensity",
+        json={**INTENSITY_BODY, "dark_reference_id": ref["reference_id"]},
+    ).json()
+    assert resp["status"] == "error"
+    assert "does not match" in resp["message"]
+
+
+def test_mode_filter_on_list(client: TestClient) -> None:
+    client.post("/api/calibrate/gated-dark-reference", json=GATED_BODY)
+    client.post("/api/calibrate/intensity-dark-reference", json=INTENSITY_BODY)
+    gated = client.get("/api/calibration/dark-references?mode=gated").json()["references"]
+    intensity = client.get("/api/calibration/dark-references?mode=intensity").json()["references"]
+    both = client.get("/api/calibration/dark-references").json()["references"]
+    assert [r["mode"] for r in gated] == ["gated"]
+    assert [r["mode"] for r in intensity] == ["intensity"]
+    assert len(both) == 2

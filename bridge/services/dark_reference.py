@@ -1,12 +1,18 @@
-"""Gated dark-count reference: build, store, and apply per-pixel correction.
+"""Dark-count (DCR) reference: build, store, and apply per-pixel correction.
 
-DCR on the SPAD512² is heat-driven and gate-timing-dependent, so a dark
-reference is only physically meaningful for the *exact* gate configuration it
-was measured with. The reference is a per-pixel, per-gate-step map built from a
-covered-sensor gated acquisition: the acquisition's ``iterations`` serve as the
-repeat axis (median when >= 3 repeats, mean otherwise), and the stored map is
-**per-iteration**, so it applies to a signal acquisition with any iteration
-count — everything else in the fingerprint must match exactly.
+DCR on the SPAD512² is heat-driven and timing-dependent, so a dark reference is
+only physically meaningful for the *exact* acquisition configuration it was
+measured with. The reference is a per-pixel map built from a covered-sensor
+acquisition: the acquisition's ``iterations`` serve as the repeat axis (median
+when >= 3 repeats, mean otherwise), and the stored map is **per-iteration**, so
+it applies to a signal acquisition with any iteration count — everything else
+in the fingerprint must match exactly.
+
+Two modes share the same math: a gated reference is ``(gate_steps, H, W)``;
+an intensity reference is the degenerate ``gate_steps = 1`` case, ``(1, H, W)``.
+Fingerprints are mode-specific dicts with disjoint key sets, so a gated
+reference can never accidentally match an intensity acquisition (and the store
+also records ``mode`` explicitly for listing/filtering).
 
 Correction is ``clip(signal - reference, 0)`` — counts cannot go negative.
 The raw acquisition data persisted to disk is never modified; correction is
@@ -28,12 +34,13 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 
 if TYPE_CHECKING:
-    from bridge.core.acquisition import GatedParams
+    from bridge.core.acquisition import GatedParams, IntensityParams
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS dark_references (
     id TEXT PRIMARY KEY,
     created_at REAL NOT NULL,
+    mode TEXT NOT NULL DEFAULT 'gated',
     fingerprint TEXT NOT NULL,
     iterations INTEGER NOT NULL,
     gate_steps INTEGER NOT NULL,
@@ -46,7 +53,7 @@ MIN_MEDIAN_REPEATS = 3
 
 
 def gated_fingerprint(params: GatedParams) -> dict[str, Any]:
-    """The gate configuration a dark reference is only valid for.
+    """The gate configuration a gated dark reference is only valid for.
 
     ``iterations`` is deliberately excluded — the stored reference is
     per-iteration, so it broadcasts over any signal iteration count. Everything
@@ -65,6 +72,22 @@ def gated_fingerprint(params: GatedParams) -> dict[str, Any]:
         "overlap": params.overlap,
         "pileup_correction": params.pileup_correction,
         "arbitrary_steps": list(params.arbitrary_steps) if params.arbitrary_steps else None,
+    }
+
+
+def intensity_fingerprint(params: IntensityParams) -> dict[str, Any]:
+    """The intensity configuration an intensity dark reference is valid for.
+
+    Same ``iterations`` exclusion as :func:`gated_fingerprint`. The
+    ``roi_width`` key (absent from gated fingerprints, which are always full
+    width) also guarantees the two fingerprint shapes can never collide.
+    """
+    return {
+        "bit_depth": params.bit_depth,
+        "integration_time": params.integration_time,
+        "roi_width": params.roi_width,
+        "overlap": params.overlap,
+        "pileup_correction": params.pileup_correction,
     }
 
 
@@ -112,7 +135,7 @@ def apply_dark_correction(stack: np.ndarray, reference: np.ndarray) -> np.ndarra
     return np.asarray(np.rint(corrected).reshape(stack.shape).astype(stack.dtype))
 
 
-class GatedDarkReferenceStore:
+class DarkReferenceStore:
     def __init__(self, db_path: str | Path) -> None:
         self._path = Path(db_path)
         self._npy_dir = self._path.parent / "dark_references"
@@ -131,6 +154,7 @@ class GatedDarkReferenceStore:
     def save(
         self,
         *,
+        mode: str,
         fingerprint: dict[str, Any],
         reference: np.ndarray,
         iterations: int,
@@ -145,11 +169,12 @@ class GatedDarkReferenceStore:
         with self._connect() as conn:
             conn.execute(
                 "INSERT INTO dark_references "
-                "(id, created_at, fingerprint, iterations, gate_steps, npy_path, source_path) "
-                "VALUES (?,?,?,?,?,?,?)",
+                "(id, created_at, mode, fingerprint, iterations, gate_steps, npy_path, source_path) "
+                "VALUES (?,?,?,?,?,?,?,?)",
                 (
                     ref_id,
                     time.time(),
+                    mode,
                     json.dumps(fingerprint, sort_keys=True),
                     iterations,
                     int(reference.shape[0]),
@@ -180,11 +205,15 @@ class GatedDarkReferenceStore:
             ).fetchone()
         return self._row_to_meta(row) if row is not None else None
 
-    def list(self) -> list[dict[str, Any]]:
+    def list(self, mode: str | None = None) -> list[dict[str, Any]]:
+        query = "SELECT * FROM dark_references"
+        args: list[Any] = []
+        if mode:
+            query += " WHERE mode = ?"
+            args.append(mode)
+        query += " ORDER BY created_at ASC"
         with self._connect() as conn:
-            rows = conn.execute(
-                "SELECT * FROM dark_references ORDER BY created_at ASC"
-            ).fetchall()
+            rows = conn.execute(query, args).fetchall()
         return [self._row_to_meta(row) for row in rows]
 
     @staticmethod
@@ -192,6 +221,7 @@ class GatedDarkReferenceStore:
         return {
             "id": row["id"],
             "created_at": row["created_at"],
+            "mode": row["mode"],
             "fingerprint": json.loads(row["fingerprint"]),
             "iterations": row["iterations"],
             "gate_steps": row["gate_steps"],
