@@ -1,10 +1,11 @@
-# Design: gated dark-count (DCR) reference & correction
+# Design: dark-count (DCR) reference & correction (gated + intensity)
 
-> **Status: IMPLEMENTED on this branch (`gated-dcr-correction-design`), not yet merged
-> to `main`.** Verified against the mock (tests + live browser). Awaiting the user's
-> decision to merge — and real-camera validation of the correction physics
-> (mock dark frames are statistically identical to mock signal frames, so only the
-> mechanics are provable pre-hardware). See "Implementation notes" at the bottom.
+> **Status: IMPLEMENTED and merged to `main` (2026-08-05).** Verified against the
+> mock (tests + live browser). **The correction physics still needs real-camera
+> validation** — mock dark frames are statistically identical to mock signal
+> frames, so only the mechanics are provable pre-hardware; see the "Mock vs. real
+> hardware" checklist in [constraints](constraints.md). Implementation notes at
+> the bottom.
 
 ## Problem (as described by the user, 2026-07-22)
 

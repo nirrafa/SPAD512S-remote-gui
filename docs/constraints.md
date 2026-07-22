@@ -54,3 +54,4 @@ These hold against the mock but are **unconfirmed on the real vendor**; validate
 5. FLIM command format: the two vendor references disagree (comma vs no-comma after `c`/`i`); code follows `cSPAD.py` — test both. FLIM raw-CSV full gate-frame count + first-field-per-line assumption (B-16).
 6. Vex bounds vs the real breakdown voltage (replace the 50 V placeholder).
 7. A Windows launch path is needed on the vendor host (the current launcher is `.command`/`.sh`).
+8. **Dark-correction physics** (Phase 15): mock dark frames are statistically identical to mock signal frames, so only the mechanics are proven. On the real camera: measure a dark reference (cap on), verify the subtracted residual is near-zero on a dark scene, then verify a real signal survives correction with the DCR pattern removed — for both gated and intensity modes, at the lab's divided trigger rate.

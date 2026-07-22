@@ -25,7 +25,8 @@
 | 12 | Experiment log & presets | ✅ Done | 16 / 16 |
 | 13 | Integration & E2E (hardware bring-up deferred) | ✅ Done | 11 / 11 |
 | 14 | Live view (post-Phase-13 addition, not in the original PRD) | ✅ Done | `tests/test_live.py` 8/8 |
-| **Total** | Phases 0–14 done; hardware bring-up deferred until the camera returns | | **202 / 202 pre-dev tests passing** ✅ (+ 8 live-view regression tests outside the PRD spec) |
+| 15 | DCR dark-reference correction (gated + intensity) + WB sliders (post-PRD) | ✅ Done (physics needs the camera) | `tests/test_dark_reference.py` 18/18 |
+| **Total** | Phases 0–15 done; hardware bring-up deferred until the camera returns | | **202 / 202 pre-dev tests passing** ✅ (+ 26 post-PRD regression tests) |
 
 > Note: the 202 collected pre-dev tests exceed the plan's original 185 estimate; per-file counts (e.g. `test_02` = 26, not 11) differ from the plan's mapping table. All prior in-scope deferrals are resolved (`test_13` health-poll → Phase 8; `test_12` sweep/disconnect → Phase 9; `test_10`/`test_15` browser gates → Phase 13). Three code-review rounds have been applied (B-01..B-31, B-36 fixed; B-32..B-35, B-37 logged for hardware bring-up).
 
@@ -63,6 +64,25 @@ Copy this block for each new entry. Most recent session goes on top.
 ---
 
 <!-- Add new entries below this line, most recent first -->
+
+### 2026-08-05 — Phase 15: DCR dark-reference correction + WB sliders (merged)
+
+**Phase(s):** 15 (post-PRD, user-requested; built on `gated-dcr-correction-design`, merged to `main`)
+**Who:** Nir + Claude (inline)
+
+#### Done
+- **Gated dark-count correction** (per `docs/design_gated_dcr_correction.md`): measure a covered-sensor gated run at the exact gate config → per-pixel, per-gate-step reference (median across iterations ≥3, else mean; stored per-iteration so any signal iteration count broadcasts) → `clip(signal − reference, 0)` on the derived views only. Fingerprint fast-fail before any vendor command; raw data always persisted.
+- **Intensity-mode correction**: same math (`gate_steps = 1` degenerate case). Service generalized to `dark_reference.py` / `DarkReferenceStore` (mode column); disjoint fingerprints so cross-mode references can never match.
+- **Full documentation trail** (user requirement): every sequence's sidecar carries its complete params; dark runs are marked `purpose: *_dark_reference`; corrected runs carry a `dark_correction` block (reference id + `.npy` path + source dark folder + method); dark measurements and corrected acquisitions both land in the experiment log with provenance; store links reference ↔ raw dark run bidirectionally.
+- **WB sliders** (`WBRangeControl`): manual min/max display stretch + auto/reset on Intensity, Gated, Live, and FLIM lifetime map (closes the "no contrast control" gap; Playwright `auto-stretch` hooks preserved).
+- Endpoints: `POST /api/calibrate/{gated,intensity}-dark-reference`, `GET /api/calibration/dark-references?mode=`; `dark_reference_id` on gated/intensity acquire.
+- Verified live against the mock across three demo sessions (measure → corrected acquire → badge + near-zero residual; mismatch rejection naming the differing field; WB clipping both directions).
+
+#### Tests
+- `tests/test_dark_reference.py` 18/18; full combined check on merge: backend 52/52 + all 202 pre-dev (incl. Playwright browser suites) green; ruff/mypy clean; frontend tsc/oxlint/vitest(20)/build green.
+
+#### Deferred to hardware
+- Correction **physics** (mock dark ≡ mock signal statistically — only mechanics provable): added as item 8 of the constraints "Mock vs. real hardware" checklist.
 
 ### 2026-07-15 — Phase 14: live view
 

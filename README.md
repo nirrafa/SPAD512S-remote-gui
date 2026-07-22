@@ -66,8 +66,12 @@ suite runs against the in-process bridge with no browser.
 **Phases 0–13 complete — full PRD spec coverage (202/202 pre-dev tests) against
 the mock vendor server.** Intensity, gated, FLIM, raw 1-bit, sweeps/scheduling,
 calibration, safety/health, data handling, in-browser visualization, experiment
-log + presets + re-run, and a Playwright browser E2E harness. A post-PRD **Live**
-tab adds a spartan on-demand focus/alignment view (single-shot or a 300 ms
-client-driven poll loop) for hosts that can't run the vendor's own GUI. The
-remaining work is hardware bring-up on the Windows host once the SPAD512² is
-available. Track progress in [docs/progress.md](docs/progress.md).
+log + presets + re-run, and a Playwright browser E2E harness. Post-PRD additions:
+a spartan on-demand **Live** tab (single-shot or a 300 ms client-driven poll
+loop) for hosts that can't run the vendor's own GUI; **dark-count (DCR)
+reference & correction** for gated and intensity modes (covered-sensor
+reference measurement → per-pixel subtraction, display-only, full provenance);
+and manual **WB min/max sliders** on every image view. The remaining work is
+hardware bring-up on the Windows host once the SPAD512² is available (including
+dark-correction physics validation). Track progress in
+[docs/progress.md](docs/progress.md).
