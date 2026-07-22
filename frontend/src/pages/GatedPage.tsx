@@ -135,6 +135,7 @@ export function GatedPage() {
                 clear ROIs
               </button>
             )}
+            {result?.dark_corrected && <span className="ok">dark-corrected</span>}
             {result?.host_path && <span className="muted">saved: {result.host_path}</span>}
           </div>
           <ProgressBar value={live.progress} visible={busy} />

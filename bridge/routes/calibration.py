@@ -13,11 +13,19 @@ import numpy as np
 from fastapi import APIRouter, Request
 from pydantic import BaseModel, ConfigDict
 
+from bridge.core.acquisition import AcquisitionRunner
 from bridge.core.calibration_state import CalibrationStore
 from bridge.core.instrument import InstrumentState, InstrumentStatus
 from bridge.protocol import commands
 from bridge.protocol.client import NotConnectedError, ProtocolClient, ProtocolError
-from bridge.protocol.decoder import bytes_per_frame, decode_intensity
+from bridge.protocol.decoder import GATED_BIT_DEPTHS, bytes_per_frame, decode_intensity
+from bridge.services.gated_dark_reference import (
+    MIN_MEDIAN_REPEATS,
+    GatedDarkReferenceStore,
+    build_reference,
+    gated_fingerprint,
+)
+from bridge.services.sweep import _gated_params
 
 router = APIRouter(prefix="/api/calibrate")
 status_router = APIRouter(prefix="/api/calibration")
@@ -148,6 +156,86 @@ async def calibration_status(request: Request) -> dict[str, object]:
         flim_entry["stale"] = False
     status["flim_irf"] = flim_entry
     return status
+
+
+class GatedDarkReferenceRequest(BaseModel):
+    """Same gate-configuration surface as a gated acquisition — a dark
+    reference is only valid for the exact config it was measured with, so the
+    request mirrors ``GatedRequest`` (minus naming/reducer/correction)."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    bit_depth: int = 8
+    integration_time: float | None = None
+    integration_time_ms: float | None = None
+    iterations: int = 1
+    gate_steps: int = 10
+    gate_step_size_ps: float = 18.0
+    gate_width: int = 5
+    gate_offset: int = 0
+    gate_direction: str = "forward"
+    gate_trigger_source: str = "external"
+    overlap: bool = False
+    stream: bool = False
+    pileup_correction: bool = False
+    arbitrary_steps: list[float] | None = None
+
+
+@router.post("/gated-dark-reference")
+async def measure_gated_dark_reference(
+    request: Request, body: GatedDarkReferenceRequest
+) -> dict[str, object]:
+    """Measure a covered-sensor gated acquisition and store its per-pixel,
+    per-gate-step dark map. ``iterations`` is the repeat axis (median when
+    >= 3, mean otherwise); the raw dark acquisition is persisted to disk like
+    any gated run, as a lab record."""
+    protocol: ProtocolClient = request.app.state.protocol
+    runner: AcquisitionRunner = request.app.state.runner
+    store: GatedDarkReferenceStore = request.app.state.dark_references
+
+    if not protocol.connected:
+        return {"status": "error", "message": "vendor disconnected"}
+    if body.bit_depth not in GATED_BIT_DEPTHS:
+        return {"status": "error", "message": f"invalid gated bit_depth {body.bit_depth}"}
+    if body.gate_direction not in ("forward", "reverse"):
+        return {"status": "error", "message": f"invalid gate_direction {body.gate_direction}"}
+    if body.gate_trigger_source not in ("internal", "external"):
+        return {"status": "error", "message": f"invalid trigger {body.gate_trigger_source}"}
+    if body.iterations < 1:
+        return {"status": "error", "message": "iterations must be >= 1"}
+
+    params = _gated_params(body.model_dump(exclude_none=True))
+    result = await runner.run_gated(params, keep_stack=True)
+    stack = result.pop("_stack", None)
+    if result.get("status") != "done" or stack is None:
+        return result
+
+    reference = await asyncio.to_thread(
+        build_reference,
+        stack,
+        iterations=params.iterations,
+        gate_steps=params.effective_steps,
+    )
+    reference_id = store.save(
+        fingerprint=gated_fingerprint(params),
+        reference=reference,
+        iterations=params.iterations,
+    )
+    return {
+        "status": "done",
+        "reference_id": reference_id,
+        "gate_steps": params.effective_steps,
+        "iterations": params.iterations,
+        "method": "median" if params.iterations >= MIN_MEDIAN_REPEATS else "mean",
+        "setup_prompt": "Cap the sensor / ensure dark conditions before measuring.",
+        "host_path": result.get("host_path"),
+    }
+
+
+@status_router.get("/gated-dark-references")
+async def list_gated_dark_references(request: Request) -> dict[str, object]:
+    store: GatedDarkReferenceStore = request.app.state.dark_references
+    return {"references": store.list()}
 
 
 def _dcr_curve(values: np.ndarray) -> dict[str, object]:

@@ -5,6 +5,8 @@ import type {
   CalibrationResult,
   CalibrationStatus,
   CalibrationStepResult,
+  DarkReference,
+  DarkReferenceResult,
   DCRCurve,
   ExperimentLogEntry,
   FLIMIrfParams,
@@ -82,6 +84,16 @@ export function acquireFlim(params: FLIMParams): Promise<FLIMResult> {
 
 export function getCalibrationStatus(): Promise<CalibrationStatus> {
   return getJson<CalibrationStatus>('/api/calibration/status')
+}
+
+export function measureGatedDarkReference(
+  params: Record<string, unknown>,
+): Promise<DarkReferenceResult> {
+  return postJson<DarkReferenceResult>('/api/calibrate/gated-dark-reference', params)
+}
+
+export function listGatedDarkReferences(): Promise<{ references: DarkReference[] }> {
+  return getJson<{ references: DarkReference[] }>('/api/calibration/gated-dark-references')
 }
 
 export function getDcrCurve(): Promise<DCRCurve> {

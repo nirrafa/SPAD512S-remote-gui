@@ -343,6 +343,7 @@ class GatedRequest(BaseModel):
     experiment_name: str | None = None
     notes: str | None = None
     run_reducer: bool = False
+    dark_reference_id: str | None = None
 
     @property
     def resolved_integration_time(self) -> float:
@@ -402,6 +403,7 @@ async def acquire_gated(request: Request, params: GatedRequest) -> dict[str, obj
             experiment_name=params.experiment_name,
             notes=params.notes,
             run_reducer=params.run_reducer,
+            dark_reference_id=params.dark_reference_id,
         )
     )
     _record_acquisition(request, mode="gated", params_model=params, result=result)

@@ -1,7 +1,10 @@
 # Design: gated dark-count (DCR) reference & correction
 
-> **Status: design only, not implemented.** This lives on the `gated-dcr-correction-design`
-> branch until we decide to build it. Nothing here touches `main`.
+> **Status: IMPLEMENTED on this branch (`gated-dcr-correction-design`), not yet merged
+> to `main`.** Verified against the mock (tests + live browser). Awaiting the user's
+> decision to merge — and real-camera validation of the correction physics
+> (mock dark frames are statistically identical to mock signal frames, so only the
+> mechanics are provable pre-hardware). See "Implementation notes" at the bottom.
 
 ## Problem (as described by the user, 2026-07-22)
 
@@ -136,16 +139,55 @@ per the "not implementing yet" instruction — flagged so it doesn't get lost, a
 could reasonably be grabbed as its own small task before or independent of the bigger
 feature.
 
-## Open questions for when we implement this
+## Open questions — RESOLVED (v1 decisions, 2026-07-22)
 
-1. Median vs. mean for the reference — how many dark repeats are realistic to ask the
-   user for in the lab workflow?
-2. Should `iterations` mismatch between dark and signal be a hard reject, or should we
-   normalize (divide by iterations) and allow it?
-3. Where should the "measure dark" step live in the workflow — a dedicated calibration
-   panel, or inline on the Gated page next to Acquire?
-4. Do we need the corrected stack to flow into the reducer/downstream `.npy` output,
-   or is display-only (preview + decay curve) correction enough for v1?
+1. **Median vs. mean:** the dark acquisition's own `iterations` is the repeat axis —
+   one dark run, no multi-acquisition workflow. Median when `iterations >= 3`
+   (robust to afterpulsing/hot-pixel bursts), mean otherwise. The response reports
+   which was used (`"method"`).
+2. **`iterations` mismatch:** neither reject nor rescale — dissolved structurally.
+   The stored reference is **per-iteration** (`(gate_steps, H, W)` float32, reduced
+   over the dark run's iteration axis), so it broadcasts over any signal iteration
+   count. `iterations` is deliberately excluded from the fingerprint; everything
+   else must match exactly (checked before any vendor command — fast-fail with the
+   differing field names in the error).
+3. **UI location:** inline on the Gated panel ("Dark-count correction" section).
+   The measure button reuses the exact on-screen gate config, which guarantees the
+   "exact same values" requirement by construction.
+4. **Reducer/`.npy` output:** display-only for v1. Correction shapes the previews,
+   response preview, and (via per-step previews) the client-side decay curve; the
+   persisted PNGs/sidecar/reducer output stay raw. The sidecar records
+   `dark_reference_id` so downstream analysis can reproduce the correction from the
+   stored `.npy` reference if needed.
+
+## Implementation notes (what was actually built)
+
+- `bridge/services/gated_dark_reference.py` — `gated_fingerprint`, `build_reference`
+  (median/mean per-iteration reduction), `apply_dark_correction`
+  (float-domain subtract → clip at 0 → round back to input dtype),
+  `GatedDarkReferenceStore` (lazy SQLite metadata + `.npy` under
+  `data_root/dark_references/`, same pattern as `CheckpointStore`).
+- `bridge/core/acquisition.py` — `GatedParams.dark_reference_id`;
+  `_resolve_dark_reference` validates fingerprint **before** the vendor command;
+  corrected `display_stack` feeds previews/result while `_persist` still gets the
+  raw stack; `run_gated(..., keep_stack=True)` hands the raw stack to in-process
+  callers (the dark-reference builder) via a popped `"_stack"` key.
+- `bridge/routes/calibration.py` — `POST /api/calibrate/gated-dark-reference`
+  (measures via `run_gated`, persists the raw dark run as a lab record, stores the
+  reference) and `GET /api/calibration/gated-dark-references`.
+- `bridge/routes/acquire.py` — `GatedRequest.dark_reference_id` passthrough.
+- Frontend — Gated panel "Dark-count correction" section (measure button + reference
+  dropdown labeled with gate params + timestamp, auto-selects a fresh reference);
+  green `dark-corrected` badge on the Gated page toolbar.
+- Tests — `tests/test_gated_dark_reference.py` (13): median-rejects-outlier,
+  clip-at-zero, iteration broadcast, shape/count validation, store round-trip,
+  measure→list, corrected acquire flags `dark_corrected`, fingerprint mismatch
+  fast-fails naming the differing field, unknown id, differing iterations accepted,
+  persisted files stay raw.
+- Verified live against the mock: measure → auto-select → corrected acquire shows
+  the badge and a near-zero residual preview (mock dark ≡ mock signal statistically),
+  raw acq folder still written; changing `gate_width` then acquiring is rejected
+  with `differs on: gate_width`.
 
 ## Later ideas (not v1)
 

@@ -57,6 +57,8 @@ export interface AcquireResult {
   bit_depth?: number
   calibration_valid?: boolean
   warning?: string
+  dark_corrected?: boolean
+  dark_reference_id?: string
 }
 
 export interface GatedParams {
@@ -73,6 +75,25 @@ export interface GatedParams {
   stream: boolean
   pileup_correction: boolean
   arbitrary_steps?: number[]
+  dark_reference_id?: string
+}
+
+export interface DarkReference {
+  id: string
+  created_at: number
+  fingerprint: Record<string, unknown>
+  iterations: number
+  gate_steps: number
+}
+
+export interface DarkReferenceResult {
+  status: 'done' | 'error'
+  message?: string
+  reference_id?: string
+  gate_steps?: number
+  iterations?: number
+  method?: 'median' | 'mean'
+  host_path?: string
 }
 
 export interface OptimalParams {
