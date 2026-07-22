@@ -9,8 +9,12 @@ just one URL and one process.
 |---|---|
 | `start-spad.sh` | From a terminal: `./launchers/start-spad.sh`. Works on macOS and Linux. Ctrl+C (or close the terminal) to stop. |
 | `Start SPAD (Mock + GUI).command` | macOS Finder double-click — a thin wrapper that runs `start-spad.sh`. |
+| `start-spad-windows.bat` | **Windows lab host, real camera.** Double-click; auto-creates `.venv` + installs deps on first run, then starts the bridge and opens the browser. Start the vendor software first. Full beginner guide: [../docs/windows_smoke_test.md](../docs/windows_smoke_test.md). |
+| `start-spad-windows-practice.bat` | **Windows, no camera needed** — same, but also starts the mock camera. For rehearsing before the real smoke test. |
 
-Both run the same logic (`start-spad.sh` is the single source of truth).
+The mac/Linux pair runs the same logic (`start-spad.sh` is the single source of
+truth). The Windows `.bat` files are self-contained and need **no Node/npm** —
+`frontend/dist` is committed to the repo for exactly this.
 
 ## First-time setup (once per machine)
 

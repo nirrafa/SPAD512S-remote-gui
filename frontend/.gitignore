@@ -8,7 +8,8 @@ pnpm-debug.log*
 lerna-debug.log*
 
 node_modules
-dist
+# dist IS committed on purpose — the Windows lab host runs the GUI without
+# Node/npm (see ../docs/windows_smoke_test.md). Rebuild + commit after changes.
 dist-ssr
 *.local
 

@@ -27,6 +27,10 @@ Double-click a launcher in [`launchers/`](launchers/) to start the mock camera +
 bridge + GUI and open your browser — see [launchers/README.md](launchers/README.md).
 After a one-time `python3.11 -m venv .venv && pip install -e ".[dev]"`.
 
+**Windows lab host (real camera):** see the beginner-friendly, step-by-step
+guide in [docs/windows_smoke_test.md](docs/windows_smoke_test.md) — install
+Python, download the ZIP, double-click one `.bat`. No Node/npm needed.
+
 ## Development
 
 ### Bridge

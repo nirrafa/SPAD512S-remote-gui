@@ -1,0 +1,4 @@
+# Windows batch files must keep CRLF line endings everywhere (cmd.exe can
+# mis-parse LF-only batch files). -text disables any eol normalization; the
+# files are authored with CRLF in the repo.
+*.bat -text

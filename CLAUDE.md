@@ -11,6 +11,7 @@ Web-based remote control GUI for the Pi Imaging SPAD512² camera in the Suchowsk
 - [Constraints](docs/constraints.md) — **update this file whenever a new constraint is discovered**
 - [Known Bugs](docs/bugs.md) — **open issues & deferred fixes (mostly from `/code-review`); add an entry when a finding is deferred, move to Fixed when resolved**
 - [Design: DCR correction](docs/design_gated_dcr_correction.md) — **implemented (gated + intensity dark references, WB sliders); correction physics awaits real-camera validation**
+- [Windows smoke-test guide](docs/windows_smoke_test.md) — **beginner-proof runbook for the lab's Windows host; `frontend/dist` is committed so Windows needs Python only (rebuild + commit dist after frontend changes)**
 
 ## Stack
 

@@ -3,7 +3,7 @@ __pycache__/
 *.py[cod]
 *$py.class
 *.egg-info/
-dist/
+/dist/
 build/
 *.egg
 .venv/
@@ -12,7 +12,9 @@ venv/
 
 # Node
 node_modules/
-frontend/dist/
+# NOTE: frontend/dist IS committed on purpose — the Windows lab host runs the
+# GUI without Node/npm (see docs/windows_smoke_test.md). After changing the
+# frontend, run `npm run build` and commit the updated dist.
 
 # OS
 .DS_Store
