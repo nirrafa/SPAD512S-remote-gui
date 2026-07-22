@@ -10,6 +10,7 @@ Web-based remote control GUI for the Pi Imaging SPAD512² camera in the Suchowsk
 - [Learnings](docs/learnings.md) — **bugs, protocol quirks, and lessons for future lab tools**
 - [Constraints](docs/constraints.md) — **update this file whenever a new constraint is discovered**
 - [Known Bugs](docs/bugs.md) — **open issues & deferred fixes (mostly from `/code-review`); add an entry when a finding is deferred, move to Fixed when resolved**
+- [Design: gated DCR correction](docs/design_gated_dcr_correction.md) — **not implemented; lives on `gated-dcr-correction-design` until we decide to build it**
 
 ## Stack
 
