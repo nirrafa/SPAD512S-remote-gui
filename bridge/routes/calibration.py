@@ -205,6 +205,9 @@ async def measure_gated_dark_reference(
         return {"status": "error", "message": "iterations must be >= 1"}
 
     params = _gated_params(body.model_dump(exclude_none=True))
+    # The dark run's own sidecar must say what it was: a reference measurement,
+    # with the full gate parameter set, not a scientific acquisition.
+    params.purpose = "gated_dark_reference"
     result = await runner.run_gated(params, keep_stack=True)
     stack = result.pop("_stack", None)
     if result.get("status") != "done" or stack is None:
@@ -216,19 +219,43 @@ async def measure_gated_dark_reference(
         iterations=params.iterations,
         gate_steps=params.effective_steps,
     )
+    host_path = result.get("host_path")
+    method = "median" if params.iterations >= MIN_MEDIAN_REPEATS else "mean"
     reference_id = store.save(
         fingerprint=gated_fingerprint(params),
         reference=reference,
         iterations=params.iterations,
+        source_path=str(host_path) if host_path else None,
     )
+    reference_meta = store.meta(reference_id) or {}
+
+    # A dark measurement is a sequence like any other — record it in the
+    # experiment log with its full parameters and the reference it produced.
+    ctx = runner.acquisition_context()
+    request.app.state.experiment_log.log_acquisition(
+        mode="gated_dark_reference",
+        params={
+            **body.model_dump(exclude_none=True),
+            "purpose": "gated_dark_reference",
+            "reference_id": reference_id,
+            "reference_npy_path": reference_meta.get("npy_path"),
+            "method": method,
+        },
+        result_path=str(host_path) if host_path else None,
+        calibration_state=ctx["calibration_state"],
+        temperatures=ctx["temperatures"],
+        notes="dark-count reference measurement (sensor capped)",
+    )
+
     return {
         "status": "done",
         "reference_id": reference_id,
+        "reference_npy_path": reference_meta.get("npy_path"),
         "gate_steps": params.effective_steps,
         "iterations": params.iterations,
-        "method": "median" if params.iterations >= MIN_MEDIAN_REPEATS else "mean",
+        "method": method,
         "setup_prompt": "Cap the sensor / ensure dark conditions before measuring.",
-        "host_path": result.get("host_path"),
+        "host_path": host_path,
     }
 
 

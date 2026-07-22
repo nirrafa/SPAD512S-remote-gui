@@ -37,7 +37,8 @@ CREATE TABLE IF NOT EXISTS dark_references (
     fingerprint TEXT NOT NULL,
     iterations INTEGER NOT NULL,
     gate_steps INTEGER NOT NULL,
-    npy_path TEXT NOT NULL
+    npy_path TEXT NOT NULL,
+    source_path TEXT
 );
 """
 
@@ -128,8 +129,15 @@ class GatedDarkReferenceStore:
         return conn
 
     def save(
-        self, *, fingerprint: dict[str, Any], reference: np.ndarray, iterations: int
+        self,
+        *,
+        fingerprint: dict[str, Any],
+        reference: np.ndarray,
+        iterations: int,
+        source_path: str | None = None,
     ) -> str:
+        """Store a reference; ``source_path`` links back to the persisted raw
+        dark acquisition folder it was built from (the lab record)."""
         ref_id = uuid.uuid4().hex[:12]
         self._npy_dir.mkdir(parents=True, exist_ok=True)
         npy_path = self._npy_dir / f"darkref_{ref_id}.npy"
@@ -137,8 +145,8 @@ class GatedDarkReferenceStore:
         with self._connect() as conn:
             conn.execute(
                 "INSERT INTO dark_references "
-                "(id, created_at, fingerprint, iterations, gate_steps, npy_path) "
-                "VALUES (?,?,?,?,?,?)",
+                "(id, created_at, fingerprint, iterations, gate_steps, npy_path, source_path) "
+                "VALUES (?,?,?,?,?,?,?)",
                 (
                     ref_id,
                     time.time(),
@@ -146,6 +154,7 @@ class GatedDarkReferenceStore:
                     iterations,
                     int(reference.shape[0]),
                     str(npy_path),
+                    source_path,
                 ),
             )
         return ref_id
@@ -163,19 +172,29 @@ class GatedDarkReferenceStore:
             return None
         return dict(json.loads(row["fingerprint"])), np.load(npy_path)
 
+    def meta(self, ref_id: str) -> dict[str, Any] | None:
+        """Provenance metadata for one reference (no array load)."""
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM dark_references WHERE id = ?", (ref_id,)
+            ).fetchone()
+        return self._row_to_meta(row) if row is not None else None
+
     def list(self) -> list[dict[str, Any]]:
         with self._connect() as conn:
             rows = conn.execute(
-                "SELECT id, created_at, fingerprint, iterations, gate_steps "
-                "FROM dark_references ORDER BY created_at ASC"
+                "SELECT * FROM dark_references ORDER BY created_at ASC"
             ).fetchall()
-        return [
-            {
-                "id": row["id"],
-                "created_at": row["created_at"],
-                "fingerprint": json.loads(row["fingerprint"]),
-                "iterations": row["iterations"],
-                "gate_steps": row["gate_steps"],
-            }
-            for row in rows
-        ]
+        return [self._row_to_meta(row) for row in rows]
+
+    @staticmethod
+    def _row_to_meta(row: sqlite3.Row) -> dict[str, Any]:
+        return {
+            "id": row["id"],
+            "created_at": row["created_at"],
+            "fingerprint": json.loads(row["fingerprint"]),
+            "iterations": row["iterations"],
+            "gate_steps": row["gate_steps"],
+            "npy_path": row["npy_path"],
+            "source_path": row["source_path"],
+        }

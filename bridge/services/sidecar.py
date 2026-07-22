@@ -24,6 +24,7 @@ def write_sidecar(
     timestamp_end: str,
     png_metadata: dict[str, str],
     frame_count: int,
+    dark_correction: dict[str, Any] | None = None,
 ) -> Path:
     payload: dict[str, Any] = {
         **params,
@@ -34,6 +35,11 @@ def write_sidecar(
         "frame_count": frame_count,
         "png_metadata": png_metadata,
     }
+    if dark_correction is not None:
+        # Full provenance of an applied dark-count correction: which reference,
+        # where its .npy and source dark run live. The persisted frames in this
+        # folder are always RAW — this block documents the derived views.
+        payload["dark_correction"] = dark_correction
     path = acq_dir / SIDECAR_NAME
     path.write_text(json.dumps(payload, indent=2))
     return path

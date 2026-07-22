@@ -90,7 +90,12 @@ def test_store_round_trip(tmp_path: Path) -> None:
     store = GatedDarkReferenceStore(tmp_path / "refs.sqlite")
     reference = np.random.default_rng(1).random((3, 4, 4)).astype(np.float32)
     fingerprint = {"bit_depth": 8, "gate_steps": 3}
-    ref_id = store.save(fingerprint=fingerprint, reference=reference, iterations=5)
+    ref_id = store.save(
+        fingerprint=fingerprint,
+        reference=reference,
+        iterations=5,
+        source_path="/data/gated_images/acq00007",
+    )
 
     loaded = store.get(ref_id)
     assert loaded is not None
@@ -98,10 +103,17 @@ def test_store_round_trip(tmp_path: Path) -> None:
     assert got_fp == fingerprint
     assert np.array_equal(got_ref, reference)
 
+    meta = store.meta(ref_id)
+    assert meta is not None
+    assert meta["source_path"] == "/data/gated_images/acq00007"
+    assert meta["npy_path"].endswith(f"darkref_{ref_id}.npy")
+
     listing = store.list()
     assert [r["id"] for r in listing] == [ref_id]
     assert listing[0]["gate_steps"] == 3
+    assert listing[0]["source_path"] == "/data/gated_images/acq00007"
     assert store.get("missing") is None
+    assert store.meta("missing") is None
 
 
 # --- integration (bridge + mock) ---------------------------------------------
@@ -182,6 +194,55 @@ def test_signal_iterations_may_differ_from_reference(client: TestClient) -> None
     ).json()
     assert resp["status"] == "done"
     assert resp["dark_corrected"] is True
+
+
+def test_documentation_trail(client: TestClient, tmp_path: Path) -> None:
+    """Every sequence documents its full parameters; corrected runs reference
+    the correction file (user requirement, 2026-08-05)."""
+    import json
+
+    ref = client.post("/api/calibrate/gated-dark-reference", json=GATED_BODY).json()
+    assert ref["reference_npy_path"].endswith(".npy")
+
+    resp = client.post(
+        "/api/acquire/gated",
+        json={**GATED_BODY, "dark_reference_id": ref["reference_id"]},
+    ).json()
+    assert resp["status"] == "done"
+    assert resp["dark_reference_path"] == ref["reference_npy_path"]
+
+    # --- dark run's own sidecar: full params + explicit purpose ---------------
+    folders = sorted((tmp_path / "gated_images").iterdir())
+    dark_sidecar = json.loads((folders[0] / "sidecar.json").read_text())
+    assert dark_sidecar["purpose"] == "gated_dark_reference"
+    assert dark_sidecar["gate_steps"] == 5
+    assert dark_sidecar["gate_step_size_ps"] == 18.0
+    assert dark_sidecar["dark_reference_id"] is None  # a dark run is never corrected
+
+    # --- corrected run's sidecar: full params + correction provenance ---------
+    signal_sidecar = json.loads((folders[1] / "sidecar.json").read_text())
+    assert signal_sidecar["gate_steps"] == 5
+    correction = signal_sidecar["dark_correction"]
+    assert correction["applied"] is True
+    assert correction["reference_id"] == ref["reference_id"]
+    assert correction["reference_npy_path"] == ref["reference_npy_path"]
+    assert correction["reference_source_path"] == ref["host_path"]
+    assert correction["method"] == "clip(signal - reference, 0)"
+    # The store links back to the raw dark run it was built from.
+    listing = client.get("/api/calibration/gated-dark-references").json()
+    assert listing["references"][0]["source_path"] == ref["host_path"]
+
+    # --- experiment log: both sequences recorded with full params -------------
+    entries = client.get("/api/experiment-log").json()["entries"]
+    modes = [e["mode"] for e in entries]
+    assert modes == ["gated_dark_reference", "gated"]
+    dark_entry, signal_entry = entries
+    assert dark_entry["params"]["reference_id"] == ref["reference_id"]
+    assert dark_entry["params"]["gate_steps"] == 5
+    assert dark_entry["notes"] == "dark-count reference measurement (sensor capped)"
+    assert signal_entry["params"]["dark_corrected"] is True
+    assert signal_entry["params"]["dark_reference_id"] == ref["reference_id"]
+    assert signal_entry["params"]["dark_reference_npy_path"] == ref["reference_npy_path"]
 
 
 def test_persisted_raw_stack_is_not_corrected(client: TestClient, tmp_path: Path) -> None:

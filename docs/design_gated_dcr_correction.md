@@ -189,6 +189,30 @@ feature.
   raw acq folder still written; changing `gate_width` then acquiring is rejected
   with `differs on: gate_width`.
 
+### Documentation trail (added 2026-08-05, user requirement)
+
+Every sequence documents its full parameters, and corrected runs reference the
+correction file:
+
+- **Dark run's own sidecar** carries the full gate parameter set plus
+  `"purpose": "gated_dark_reference"` — it is self-describing as a reference
+  measurement, not a scientific acquisition.
+- **Corrected run's sidecar** gains a `dark_correction` block:
+  `applied`, `reference_id`, `reference_npy_path` (the correction file),
+  `reference_source_path` (the raw dark run folder it was built from),
+  `reference_created_at`, `reference_iterations`, and
+  `method: "clip(signal - reference, 0)"`. The frames in the folder remain raw.
+- **Store row** records `source_path` (dark run folder) and `npy_path`, both
+  exposed by `GET /api/calibration/gated-dark-references` — so the linkage
+  reference ↔ raw dark data is bidirectional.
+- **Experiment log**: the dark measurement itself is logged
+  (`mode: "gated_dark_reference"`, full params + resulting `reference_id` +
+  `reference_npy_path`, notes "dark-count reference measurement (sensor capped)"),
+  and corrected acquisitions log `dark_corrected` + `dark_reference_id` +
+  `dark_reference_npy_path` alongside their params.
+- Locked down by `test_documentation_trail` (reads the real sidecar.json files and
+  log entries through the full HTTP stack).
+
 ## Later ideas (not v1)
 
 - Explicit time-dependent DCR model per pixel (e.g. saturating exponential

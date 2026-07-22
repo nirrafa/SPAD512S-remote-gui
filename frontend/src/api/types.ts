@@ -84,12 +84,15 @@ export interface DarkReference {
   fingerprint: Record<string, unknown>
   iterations: number
   gate_steps: number
+  npy_path?: string | null
+  source_path?: string | null
 }
 
 export interface DarkReferenceResult {
   status: 'done' | 'error'
   message?: string
   reference_id?: string
+  reference_npy_path?: string
   gate_steps?: number
   iterations?: number
   method?: 'median' | 'mean'

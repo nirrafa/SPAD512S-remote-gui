@@ -119,6 +119,7 @@ class GatedParams:
         notes: str | None = None,
         run_reducer: bool = False,
         dark_reference_id: str | None = None,
+        purpose: str | None = None,
     ) -> None:
         self.bit_depth = bit_depth
         self.integration_time = integration_time
@@ -138,6 +139,9 @@ class GatedParams:
         self.notes = notes
         self.run_reducer = run_reducer
         self.dark_reference_id = dark_reference_id
+        # e.g. "gated_dark_reference" — marks a run whose data serves as a
+        # reference measurement rather than a scientific acquisition.
+        self.purpose = purpose
 
     @property
     def effective_steps(self) -> int:
@@ -178,6 +182,7 @@ class GatedParams:
             "experiment_name": self.experiment_name,
             "notes": self.notes,
             "dark_reference_id": self.dark_reference_id,
+            "purpose": self.purpose,
         }
 
 
@@ -404,6 +409,7 @@ class AcquisitionRunner:
         vendor_frames: int,
         gate_steps: int | None,
         started_at: str,
+        dark_correction: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Write the PNG folder + sidecar (and optionally run the reducer).
 
@@ -438,6 +444,7 @@ class AcquisitionRunner:
             timestamp_end=_now_iso(),
             png_metadata=metadata,
             frame_count=len(saved.png_files),
+            dark_correction=dark_correction,
         )
         result: dict[str, Any] = {
             "host_path": self._location.display_path(saved.acq_dir),
@@ -519,19 +526,21 @@ class AcquisitionRunner:
 
     def _resolve_dark_reference(
         self, params: GatedParams
-    ) -> tuple[np.ndarray | None, str | None]:
+    ) -> tuple[np.ndarray | None, dict[str, Any] | None, str | None]:
         """Load + fingerprint-check the requested dark reference.
 
-        Returns ``(reference, error)``. Runs before any vendor command so a
-        mismatched reference fails fast without wasting an acquisition.
+        Returns ``(reference, provenance, error)`` — provenance carries the
+        reference's id/paths/creation time for the sidecar and experiment log.
+        Runs before any vendor command so a mismatched reference fails fast
+        without wasting an acquisition.
         """
         if params.dark_reference_id is None:
-            return None, None
+            return None, None, None
         if self.dark_reference_store is None:
-            return None, "dark reference store not configured"
+            return None, None, "dark reference store not configured"
         stored = self.dark_reference_store.get(params.dark_reference_id)
         if stored is None:
-            return None, f"dark reference {params.dark_reference_id!r} not found"
+            return None, None, f"dark reference {params.dark_reference_id!r} not found"
         stored_fingerprint, reference = stored
         current = gated_fingerprint(params)
         if stored_fingerprint != current:
@@ -540,11 +549,21 @@ class AcquisitionRunner:
                 for k in current
                 if stored_fingerprint.get(k) != current.get(k)
             )
-            return None, (
+            return None, None, (
                 "dark reference gate config does not match the requested "
                 f"acquisition (differs on: {', '.join(mismatched)})"
             )
-        return reference, None
+        meta = self.dark_reference_store.meta(params.dark_reference_id) or {}
+        provenance = {
+            "applied": True,
+            "reference_id": params.dark_reference_id,
+            "reference_npy_path": meta.get("npy_path"),
+            "reference_source_path": meta.get("source_path"),
+            "reference_created_at": meta.get("created_at"),
+            "reference_iterations": meta.get("iterations"),
+            "method": "clip(signal - reference, 0)",
+        }
+        return reference, provenance, None
 
     async def _gated_op(
         self, params: GatedParams, *, keep_stack: bool = False
@@ -554,7 +573,7 @@ class AcquisitionRunner:
         started_at = _now_iso()
         n_frames = params.iterations * gate_steps
 
-        reference, ref_error = self._resolve_dark_reference(params)
+        reference, dark_provenance, ref_error = self._resolve_dark_reference(params)
         if ref_error is not None:
             return {"status": "error", "message": ref_error}
 
@@ -620,6 +639,7 @@ class AcquisitionRunner:
             vendor_frames=params.iterations,
             gate_steps=gate_steps,
             started_at=started_at,
+            dark_correction=dark_provenance,
         )
         result: dict[str, Any] = {
             "status": "done",
@@ -631,9 +651,10 @@ class AcquisitionRunner:
             "bytes": len(data),
             **persisted,
         }
-        if reference is not None:
+        if dark_provenance is not None:
             result["dark_corrected"] = True
             result["dark_reference_id"] = params.dark_reference_id
+            result["dark_reference_path"] = dark_provenance.get("reference_npy_path")
         if keep_stack:
             result["_stack"] = stack
         return result
