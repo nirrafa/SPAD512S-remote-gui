@@ -257,6 +257,7 @@ def _intensity_params(params: dict[str, Any]) -> IntensityParams:
         overlap=bool(params.get("overlap", False)),
         pileup_correction=bool(params.get("pileup_correction", False)),
         timeout_s=params.get("timeout_s"),
+        dark_reference_id=params.get("dark_reference_id"),
     )
 
 
@@ -278,4 +279,6 @@ def _gated_params(params: dict[str, Any]) -> GatedParams:
         stream=bool(params.get("stream", False)),
         pileup_correction=bool(params.get("pileup_correction", False)),
         arbitrary_steps=params.get("arbitrary_steps"),
+        dark_reference_id=params.get("dark_reference_id"),
+        cooloff_s=float(params.get("cooloff_s", 0.0)),
     )

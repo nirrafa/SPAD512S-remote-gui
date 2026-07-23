@@ -131,6 +131,7 @@ class GatedParams:
         run_reducer: bool = False,
         dark_reference_id: str | None = None,
         purpose: str | None = None,
+        cooloff_s: float = 0.0,
     ) -> None:
         self.bit_depth = bit_depth
         self.integration_time = integration_time
@@ -153,6 +154,10 @@ class GatedParams:
         # e.g. "gated_dark_reference" — marks a run whose data serves as a
         # reference measurement rather than a scientific acquisition.
         self.purpose = purpose
+        # > 0 switches to the PACED path: one single-step vendor command per
+        # gate offset with this sleep between steps, letting the sensor cool
+        # off (DCR is heat-driven). 0 = the normal single continuous command.
+        self.cooloff_s = cooloff_s
 
     @property
     def effective_steps(self) -> int:
@@ -194,6 +199,7 @@ class GatedParams:
             "notes": self.notes,
             "dark_reference_id": self.dark_reference_id,
             "purpose": self.purpose,
+            "cooloff_s": self.cooloff_s,
         }
 
 
@@ -632,9 +638,7 @@ class AcquisitionRunner:
         self, params: GatedParams, *, keep_stack: bool = False
     ) -> dict[str, Any]:
         rows = self._sensor_size
-        gate_steps = params.effective_steps
         started_at = _now_iso()
-        n_frames = params.iterations * gate_steps
 
         reference, dark_provenance, ref_error = self._resolve_dark_reference(
             params.dark_reference_id, gated_fingerprint(params)
@@ -642,39 +646,61 @@ class AcquisitionRunner:
         if ref_error is not None:
             return {"status": "error", "message": ref_error}
 
-        expected = n_frames * bytes_per_frame(
-            params.bit_depth, rows, rows, params.pileup_correction
-        )
         unit = integration_time_unit(params.bit_depth)
-        command = commands.gated(
-            bit_depth=params.bit_depth,
-            integration_time=params.integration_time,
-            iterations=params.iterations,
-            gate_steps=gate_steps,
-            gate_step_size=params.gate_step_size,
-            gate_offset=params.gate_offset,
-            gate_width=params.gate_width,
-            gate_direction=params.gate_direction,
-            gate_trigger_source=params.gate_trigger_source,
-            overlap=params.overlap,
-            stream=params.stream,
-            arbitrary=bool(params.arbitrary_steps),
-        )
+        aborted = False
+        if params.cooloff_s > 0:
+            stack, gate_steps, aborted, data_bytes = await self._paced_gated_io(params, rows)
+            if gate_steps == 0:
+                return {
+                    "status": "aborted",
+                    "abort_reason": self._instrument.abort_reason,
+                    "message": "aborted before the first gate step completed",
+                }
+            n_frames = params.iterations * gate_steps
+            if aborted and gate_steps != params.effective_steps and reference is not None:
+                # A partial paced stack no longer matches the reference's step
+                # count — persist the raw partial data, skip the display
+                # correction rather than mis-applying it.
+                reference = None
+                dark_provenance = None
+        else:
+            gate_steps = params.effective_steps
+            n_frames = params.iterations * gate_steps
+            expected = n_frames * bytes_per_frame(
+                params.bit_depth, rows, rows, params.pileup_correction
+            )
+            command = commands.gated(
+                bit_depth=params.bit_depth,
+                integration_time=params.integration_time,
+                iterations=params.iterations,
+                gate_steps=gate_steps,
+                gate_step_size=params.gate_step_size,
+                gate_offset=params.gate_offset,
+                gate_width=params.gate_width,
+                gate_direction=params.gate_direction,
+                gate_trigger_source=params.gate_trigger_source,
+                overlap=params.overlap,
+                stream=params.stream,
+                arbitrary=bool(params.arbitrary_steps),
+            )
 
-        await self._protocol.send_command(commands.pileup(params.pileup_correction))
-        if params.arbitrary_steps:
-            await self._protocol.send_command(commands.arbitrary_steps(params.arbitrary_steps))
-        data = await self._protocol.send_acquire(command, expected_bytes=expected)
+            await self._protocol.send_command(commands.pileup(params.pileup_correction))
+            if params.arbitrary_steps:
+                await self._protocol.send_command(
+                    commands.arbitrary_steps(params.arbitrary_steps)
+                )
+            data = await self._protocol.send_acquire(command, expected_bytes=expected)
+            data_bytes = len(data)
 
-        stack = await asyncio.to_thread(
-            decode_intensity,
-            data,
-            bit_depth=params.bit_depth,
-            rows=rows,
-            im_width=rows,
-            iterations=n_frames,
-            pileup=params.pileup_correction,
-        )
+            stack = await asyncio.to_thread(
+                decode_intensity,
+                data,
+                bit_depth=params.bit_depth,
+                rows=rows,
+                im_width=rows,
+                iterations=n_frames,
+                pileup=params.pileup_correction,
+            )
 
         # Correction shapes only the derived views (previews, result preview);
         # the persisted raw stack below stays untouched — raw data is ground
@@ -707,15 +733,19 @@ class AcquisitionRunner:
             dark_correction=dark_provenance,
         )
         result: dict[str, Any] = {
-            "status": "done",
+            "status": "aborted" if aborted else "done",
             "preview": make_preview(display_stack[0]),
             "total_gate_steps": gate_steps,
             "previews_sent": previews_sent,
             "total_frames": n_frames,
             "integration_time_unit": unit,
-            "bytes": len(data),
+            "bytes": data_bytes,
             **persisted,
         }
+        if aborted:
+            result["abort_reason"] = self._instrument.abort_reason
+        if params.cooloff_s > 0:
+            result["cooloff_s"] = params.cooloff_s
         if dark_provenance is not None:
             result["dark_corrected"] = True
             result["dark_reference_id"] = params.dark_reference_id
@@ -723,3 +753,82 @@ class AcquisitionRunner:
         if keep_stack:
             result["_stack"] = stack
         return result
+
+    async def _paced_gated_io(
+        self, params: GatedParams, rows: int
+    ) -> tuple[np.ndarray, int, bool, int]:
+        """Gated sweep as one single-step vendor command per gate offset, with
+        ``cooloff_s`` sleep between steps so the sensor can shed heat (DCR is
+        thermally driven).
+
+        The socket is idle at every step boundary — a safe boundary, so health
+        polling and stop/auto-protect run between steps (the paced path has the
+        mid-run protection that the single-command continuous path lacks,
+        cf. bug B-32). Returns ``(stack, completed_steps, aborted)`` with the
+        stack in the standard sweep-major layout (first ``completed_steps``
+        frames = one full sweep) so persistence, previews, decay curves, and
+        dark correction behave identically to the continuous path.
+        """
+        if params.arbitrary_steps:
+            offsets = [float(v) for v in params.arbitrary_steps]
+        else:
+            offsets = [
+                float(params.gate_offset) + i * params.gate_step_size
+                for i in range(params.gate_steps)
+            ]
+            if params.gate_direction == "reverse":
+                offsets.reverse()
+
+        per_step_bytes = params.iterations * bytes_per_frame(
+            params.bit_depth, rows, rows, params.pileup_correction
+        )
+        await self._protocol.send_command(commands.pileup(params.pileup_correction))
+
+        step_stacks: list[np.ndarray] = []
+        aborted = False
+        wire_bytes = 0
+        for index, offset in enumerate(offsets):
+            command = commands.gated(
+                bit_depth=params.bit_depth,
+                integration_time=params.integration_time,
+                iterations=params.iterations,
+                gate_steps=1,
+                gate_step_size=params.gate_step_size,
+                gate_offset=int(round(offset)),
+                gate_width=params.gate_width,
+                gate_direction="forward",
+                gate_trigger_source=params.gate_trigger_source,
+                overlap=params.overlap,
+                stream=params.stream,
+                arbitrary=False,
+            )
+            data = await self._protocol.send_acquire(command, expected_bytes=per_step_bytes)
+            wire_bytes += len(data)
+            frames = await asyncio.to_thread(
+                decode_intensity,
+                data,
+                bit_depth=params.bit_depth,
+                rows=rows,
+                im_width=rows,
+                iterations=params.iterations,
+                pileup=params.pileup_correction,
+            )
+            step_stacks.append(frames)
+
+            if index < len(offsets) - 1:
+                await self._poll_health()
+                if self._instrument.stop_requested:
+                    aborted = True
+                    break
+                await asyncio.sleep(params.cooloff_s)
+
+        completed = len(step_stacks)
+        if completed == 0:
+            return np.empty((0, rows, rows), dtype=np.uint16), 0, True, wire_bytes
+        # Collected step-major (steps, iterations, H, W); transpose to the
+        # sweep-major frame order every other consumer expects.
+        collected = np.stack(step_stacks)
+        sweep_major = collected.transpose(1, 0, 2, 3).reshape(
+            params.iterations * completed, *collected.shape[2:]
+        )
+        return np.ascontiguousarray(sweep_major), completed, aborted, wire_bytes

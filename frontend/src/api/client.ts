@@ -21,6 +21,8 @@ import type {
   LiveFrameResult,
   OptimalParams,
   Preset,
+  QueueItemSpec,
+  QueueStatus,
   Raw1BitParams,
   ScheduleRequest,
   ScheduleResult,
@@ -206,6 +208,14 @@ export async function deletePreset(presetId: string): Promise<{ status: string }
   const res = await fetch(`/api/presets/${presetId}`, { method: 'DELETE' })
   if (!res.ok) throw new Error(`delete preset -> ${res.status}`)
   return (await res.json()) as { status: string }
+}
+
+export function runQueue(items: QueueItemSpec[]): Promise<{ status: string; total?: number; message?: string }> {
+  return postJson('/api/queue/run', { items })
+}
+
+export function getQueueStatus(): Promise<QueueStatus> {
+  return getJson<QueueStatus>('/api/queue/status')
 }
 
 export function wsUrl(): string {

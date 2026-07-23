@@ -12,7 +12,7 @@ import contextlib
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from bridge.core.acquisition import AcquisitionRunner, GatedParams, IntensityParams
 from bridge.core.instrument import InstrumentState, InstrumentStatus
@@ -116,17 +116,23 @@ async def stop(request: Request) -> dict[str, object]:
     instrument: InstrumentState = request.app.state.instrument
     runner: AcquisitionRunner = request.app.state.runner
     sweep: SweepRunner = request.app.state.sweep
+    acq_queue = request.app.state.queue
 
     was_sweep = sweep.active
+    if acq_queue.active:
+        # The instrument flag is cleared whenever an item returns to idle, so
+        # the queue keeps its own stop latch (remaining items are skipped).
+        acq_queue.request_stop()
     await instrument.request_stop()
 
     task = (runner.current or {}).get("task")
     if task is not None and not task.done():
         with contextlib.suppress(Exception):
             await asyncio.wait_for(asyncio.shield(task), STOP_WAIT_S)
-    # Give the sweep loop time to notice the stop at its next point boundary.
+    # Give the sweep/queue loops time to notice the stop at their next
+    # item/point boundary.
     deadline = STOP_WAIT_S
-    while sweep.active and deadline > 0:
+    while (sweep.active or acq_queue.active) and deadline > 0:
         await asyncio.sleep(STATUS_SETTLE_S)
         deadline -= STATUS_SETTLE_S
 
@@ -353,6 +359,7 @@ class GatedRequest(BaseModel):
     notes: str | None = None
     run_reducer: bool = False
     dark_reference_id: str | None = None
+    cooloff_s: float = Field(default=0.0, ge=0.0, le=600.0)
 
     @property
     def resolved_integration_time(self) -> float:
@@ -413,6 +420,7 @@ async def acquire_gated(request: Request, params: GatedRequest) -> dict[str, obj
             notes=params.notes,
             run_reducer=params.run_reducer,
             dark_reference_id=params.dark_reference_id,
+            cooloff_s=params.cooloff_s,
         )
     )
     _record_acquisition(request, mode="gated", params_model=params, result=result)

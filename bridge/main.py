@@ -17,11 +17,22 @@ from bridge.core.checkpoint import CheckpointStore
 from bridge.core.instrument import InstrumentState
 from bridge.core.ws_hub import WebSocketHub
 from bridge.protocol.client import ProtocolClient
-from bridge.routes import acquire, calibration, data, experiments, health, live, system, ws
+from bridge.routes import (
+    acquire,
+    calibration,
+    data,
+    experiments,
+    health,
+    live,
+    queue,
+    system,
+    ws,
+)
 from bridge.services.dark_reference import DarkReferenceStore
 from bridge.services.data_location import DataLocation
 from bridge.services.experiment_log import ExperimentLog
 from bridge.services.health import HealthMonitor
+from bridge.services.queue import AcquisitionQueue
 from bridge.services.scheduler import Scheduler
 from bridge.services.sweep import SweepRunner
 
@@ -84,6 +95,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.experiment_log = experiment_log
     scheduler = Scheduler(runner, experiment_log)
     app.state.scheduler = scheduler
+    app.state.queue = AcquisitionQueue(runner, instrument, experiment_log)
     try:
         yield
     finally:
@@ -115,6 +127,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(calibration.status_router)
     app.include_router(experiments.router)
     app.include_router(live.router)
+    app.include_router(queue.router)
     app.include_router(data.router)
     app.include_router(data.settings_router)
     app.include_router(ws.router)

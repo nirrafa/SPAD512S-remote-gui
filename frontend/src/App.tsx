@@ -7,6 +7,7 @@ import { GatedPage } from './pages/GatedPage'
 import { HealthPage } from './pages/HealthPage'
 import { IntensityPage } from './pages/IntensityPage'
 import { LivePage } from './pages/LivePage'
+import { QueuePage } from './pages/QueuePage'
 import { Raw1BitPage } from './pages/Raw1BitPage'
 import { SweepPage } from './pages/SweepPage'
 
@@ -16,6 +17,7 @@ type Mode =
   | 'flim'
   | 'raw1bit'
   | 'live'
+  | 'queue'
   | 'sweep'
   | 'calibration'
   | 'health'
@@ -63,6 +65,13 @@ function App() {
         </button>
         <button
           type="button"
+          className={mode === 'queue' ? 'active' : ''}
+          onClick={() => setMode('queue')}
+        >
+          Queue
+        </button>
+        <button
+          type="button"
           className={mode === 'sweep' ? 'active' : ''}
           onClick={() => setMode('sweep')}
         >
@@ -95,6 +104,7 @@ function App() {
       {mode === 'flim' && <FLIMPage />}
       {mode === 'raw1bit' && <Raw1BitPage />}
       {mode === 'live' && <LivePage />}
+      {mode === 'queue' && <QueuePage />}
       {mode === 'sweep' && <SweepPage />}
       {mode === 'calibration' && <CalibrationPage />}
       {mode === 'health' && <HealthPage />}

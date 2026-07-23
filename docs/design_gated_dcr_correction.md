@@ -241,6 +241,16 @@ are reused unchanged:
   measure→correct→document, roi_width mismatch rejection, gated-vs-intensity
   cross-mode rejection, mode-filtered listing.
 
+### Pacing interaction (added 2026-08-12, Phase 16)
+
+Paced gated acquisitions (`cooloff_s > 0` — one single-step `G` per offset with a
+cool-off sleep between steps) sit at a **different thermal equilibrium** than
+continuous ones — which is exactly what a dark reference measures. `cooloff_s`
+is therefore part of the gated fingerprint: a continuous reference never
+matches a paced acquisition, a paced reference only matches the same cool-off.
+The measure endpoint accepts `cooloff_s`, so pace the dark reference the same
+way you'll pace the real measurement.
+
 ### WB slider (added 2026-08-05, closes the "related gap" above)
 
 **`WBRangeControl`** (`frontend/src/components/WBRangeControl.tsx`): manual min/max

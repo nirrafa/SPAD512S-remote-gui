@@ -187,6 +187,10 @@ class GatedDarkReferenceRequest(BaseModel):
     stream: bool = False
     pileup_correction: bool = False
     arbitrary_steps: list[float] | None = None
+    # A paced reference (see GatedParams.cooloff_s) captures a different
+    # thermal equilibrium than a continuous one and only matches paced
+    # acquisitions with the same cool-off.
+    cooloff_s: float = 0.0
 
 
 @router.post("/gated-dark-reference")
