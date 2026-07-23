@@ -176,9 +176,12 @@ class HealthMonitor:
                 with contextlib.suppress(NotConnectedError, ProtocolError):
                     await self._protocol.send_command(commands.set_vex(cfg.vex_max))
                     r.vex = cfg.vex_max
+            # Latched: auto-protect itself brings vex back within range, so an
+            # in-range unlatch here would erase the warning one poll after
+            # raising it (a race the pre-dev suite caught). The flag means
+            # "auto-protect intervened since the last manual bias change" and
+            # is cleared by a successful /api/settings/vex.
             r.vex_reduced = True
-        elif r.vex_reduced and r.valid and r.vex <= cfg.vex_max:
-            r.vex_reduced = False  # unlatch once the bias is back within range
 
     async def _broadcast_new_alarms(self) -> None:
         current = {a["type"]: a for a in self._readings.alarms}
@@ -209,6 +212,11 @@ class HealthMonitor:
             "last_updated": r.last_updated,
             "alarms": list(r.alarms),
         }
+
+    def clear_vex_reduced(self) -> None:
+        """A deliberate, successful manual bias change supersedes the latched
+        auto-protect warning."""
+        self._readings.vex_reduced = False
 
     def config_payload(self) -> dict[str, float]:
         return self.config.to_dict()

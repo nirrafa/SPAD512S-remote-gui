@@ -90,4 +90,5 @@ async def set_vex(request: Request, body: VexRequest) -> dict[str, object]:
         await protocol.send_command(commands.set_vex(body.vex))
     except (NotConnectedError, ProtocolError) as exc:
         return {"status": "error", "message": str(exc)}
+    monitor.clear_vex_reduced()
     return {"status": "ok", "vex": body.vex}
