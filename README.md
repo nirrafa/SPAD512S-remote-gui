@@ -75,7 +75,10 @@ a spartan on-demand **Live** tab (single-shot or a 300 ms client-driven poll
 loop) for hosts that can't run the vendor's own GUI; **dark-count (DCR)
 reference & correction** for gated and intensity modes (covered-sensor
 reference measurement → per-pixel subtraction, display-only, full provenance);
-and manual **WB min/max sliders** on every image view. The remaining work is
+manual **WB min/max sliders** on every image view; an acquisition **queue**
+(run a mixed series — "2 gated then 3 intensity" — unattended); and **paced
+gated** mode (a configurable cool-off between gate steps so the sensor sheds
+heat, with matching paced dark references). The remaining work is
 hardware bring-up on the Windows host once the SPAD512² is available (including
 dark-correction physics validation). Track progress in
 [docs/progress.md](docs/progress.md).

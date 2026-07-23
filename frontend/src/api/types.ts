@@ -77,6 +77,31 @@ export interface GatedParams {
   pileup_correction: boolean
   arbitrary_steps?: number[]
   dark_reference_id?: string
+  cooloff_s?: number
+}
+
+export interface QueueItemSpec {
+  mode: 'intensity' | 'gated'
+  params: Record<string, unknown>
+  repeat: number
+}
+
+export interface QueueItemStatus {
+  index: number
+  mode: string
+  status: 'pending' | 'running' | 'done' | 'aborted' | 'error' | 'skipped'
+  host_path?: string | null
+  message?: string | null
+  dark_corrected?: boolean
+  params: Record<string, unknown>
+}
+
+export interface QueueStatus {
+  running: boolean
+  total: number
+  completed: number
+  started_at?: number | null
+  items: QueueItemStatus[]
 }
 
 export interface DarkReference {

@@ -26,7 +26,8 @@
 | 13 | Integration & E2E (hardware bring-up deferred) | ✅ Done | 11 / 11 |
 | 14 | Live view (post-Phase-13 addition, not in the original PRD) | ✅ Done | `tests/test_live.py` 8/8 |
 | 15 | DCR dark-reference correction (gated + intensity) + WB sliders (post-PRD) | ✅ Done (physics needs the camera) | `tests/test_dark_reference.py` 18/18 |
-| **Total** | Phases 0–15 done; hardware bring-up deferred until the camera returns | | **202 / 202 pre-dev tests passing** ✅ (+ 26 post-PRD regression tests) |
+| 16 | Acquisition queue (mixed series) + paced gated with cool-off (post-PRD) | ✅ Done | `tests/test_queue_and_paced.py` 9/9 |
+| **Total** | Phases 0–16 done; hardware bring-up deferred until the camera returns | | **202 / 202 pre-dev tests passing** ✅ (+ 35 post-PRD regression tests) |
 
 > Note: the 202 collected pre-dev tests exceed the plan's original 185 estimate; per-file counts (e.g. `test_02` = 26, not 11) differ from the plan's mapping table. All prior in-scope deferrals are resolved (`test_13` health-poll → Phase 8; `test_12` sweep/disconnect → Phase 9; `test_10`/`test_15` browser gates → Phase 13). Three code-review rounds have been applied (B-01..B-31, B-36 fixed; B-32..B-35, B-37 logged for hardware bring-up).
 
@@ -64,6 +65,23 @@ Copy this block for each new entry. Most recent session goes on top.
 ---
 
 <!-- Add new entries below this line, most recent first -->
+
+### 2026-08-12 — Phase 16: acquisition queue + paced (cool-off) gated
+
+**Phase(s):** 16 (post-PRD, user-requested)
+**Who:** Nir + Claude (inline)
+
+#### Done
+- **Acquisition queue** ("2 gated then 3 intensity, send it and come back"): `bridge/services/queue.py` runs a mixed intensity/gated series sequentially in a background task (survives browser disconnect). Items dispatch through the existing runner (busy guard/serialization free); long `running` intensity results are awaited to true completion; every finished item is experiment-logged with full params + `queued: true` + dark-correction provenance. `POST /api/queue/run` / `GET /api/queue/status`. The queue keeps its **own stop latch** (`/api/acquire/stop` skips remaining items) because the instrument's `stop_requested` is cleared every time an item returns to idle. In-memory: a bridge restart clears a pending queue (completed items stay on disk/log).
+- **Paced gated** (`cooloff_s > 0`): the vendor `G` command can't pause mid-stream, so the sweep decomposes into **one single-step `G` per gate offset** (uniform + arbitrary + reverse supported) with `asyncio.sleep(cooloff_s)` between steps — the sensor sheds heat between frames. Step boundaries are safe boundaries: health poll + stop/auto-protect run between steps (the mid-run protection continuous gated lacks, cf. B-32). Collected step-major, transposed to the standard sweep-major stack → persistence/previews/decay/dark-correction identical to continuous. Partial abort persists completed steps (adjusted `gate_steps`), skips display correction. `cooloff_s` is part of the **gated dark-reference fingerprint** (pacing changes the thermal equilibrium — a continuous reference must not match a paced acquisition); the dark-measure endpoint accepts `cooloff_s` so paced references can be measured.
+- **Frontend:** "Cool-off between gate steps (s)" on the Gated panel; "Add to queue" on Intensity + Gated panels (localStorage-backed builder, survives tab switches); new **Queue** tab (builder with per-item repeat ×N/remove/clear, Run series, 2s-poll status table with per-item state + saved paths, stop series).
+- **Verified live:** 3× intensity + 2× paced gated series ran to 5/5 done; log timestamps show the gated runs 4 s apart (= 4 × 1 s cool-off), all entries `queued: true` with `cooloff_s` recorded; no console errors.
+
+#### Tests
+- `tests/test_queue_and_paced.py` 9/9 (mixed series + docs trail, bad input, busy, stop-skips-remaining, paced≡continuous layout, pacing actually paces (timing), continuous-reference-rejected-for-paced, paced-reference corrects paced, paced-in-queue). Full backend 61/61 + gated/styles pre-dev 26/26; ruff/mypy clean; frontend tsc/oxlint(src)/vitest(20)/build green. `oxlint` scoped to `src` (it started scanning the committed dist).
+
+#### Hardware notes
+- Paced mode's per-step `G` decomposition needs camera validation (added to the constraints checklist): per-command overhead, and that stepping `gate_offset` across single-step commands is equivalent to the vendor's internal sweep.
 
 ### 2026-08-05 — Phase 15: DCR dark-reference correction + WB sliders (merged)
 

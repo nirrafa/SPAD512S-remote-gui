@@ -72,6 +72,10 @@ def gated_fingerprint(params: GatedParams) -> dict[str, Any]:
         "overlap": params.overlap,
         "pileup_correction": params.pileup_correction,
         "arbitrary_steps": list(params.arbitrary_steps) if params.arbitrary_steps else None,
+        # Pacing changes the sensor's thermal equilibrium — the very thing the
+        # reference measures — so a continuous-mode reference must never match
+        # a paced acquisition (or vice versa, or a different cool-off time).
+        "cooloff_s": params.cooloff_s,
     }
 
 

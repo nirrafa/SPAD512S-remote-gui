@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { IntensityParams, SystemInfo } from '../api/types'
+import { addQueueItem } from '../utils/queueStore'
 import { DarkReferenceControl } from './DarkReferenceControl'
 import { PresetSelector } from './PresetSelector'
 
@@ -38,6 +39,12 @@ export function IntensityPanel({ systemInfo, disabled, onAcquire }: Props) {
   }
 
   const submit = () => onAcquire(currentParams)
+
+  const [queueMessage, setQueueMessage] = useState<string | null>(null)
+  const addToQueue = () => {
+    const count = addQueueItem('intensity', currentParams as unknown as Record<string, unknown>)
+    setQueueMessage(`Added — queue now has ${count} item${count === 1 ? '' : 's'} (see the Queue tab).`)
+  }
 
   const applyPreset = (params: Record<string, unknown>) => {
     if (typeof params.bit_depth === 'number') setBitDepth(params.bit_depth)
@@ -117,6 +124,10 @@ export function IntensityPanel({ systemInfo, disabled, onAcquire }: Props) {
       <button type="button" disabled={disabled} onClick={submit}>
         {disabled ? 'Busy…' : 'Acquire'}
       </button>
+      <button type="button" onClick={addToQueue}>
+        Add to queue
+      </button>
+      {queueMessage && <p className="muted">{queueMessage}</p>}
       <PresetSelector
         mode="intensity"
         currentParams={currentParams as unknown as Record<string, unknown>}

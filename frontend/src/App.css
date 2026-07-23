@@ -250,6 +250,9 @@ button.link {
   max-width: 320px;
   overflow-wrap: anywhere;
 }
+.repeat-input {
+  width: 4rem;
+}
 
 .wb-control {
   display: flex;

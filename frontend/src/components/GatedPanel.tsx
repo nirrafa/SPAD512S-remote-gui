@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { getOptimalParams } from '../api/client'
 import type { GatedParams, SystemInfo } from '../api/types'
+import { addQueueItem } from '../utils/queueStore'
 import { DarkReferenceControl } from './DarkReferenceControl'
 import { PresetSelector } from './PresetSelector'
 
@@ -27,6 +28,8 @@ export function GatedPanel({ systemInfo, disabled, onAcquire }: Props) {
   const [pileup, setPileup] = useState(false)
   const [arbitrary, setArbitrary] = useState('')
   const [darkRefId, setDarkRefId] = useState('')
+  const [cooloff, setCooloff] = useState(0)
+  const [queueMessage, setQueueMessage] = useState<string | null>(null)
 
   const bitDepths = systemInfo?.valid_bit_depths.filter((b) => b >= 6) ?? GATED_BIT_DEPTHS
 
@@ -62,9 +65,15 @@ export function GatedPanel({ systemInfo, disabled, onAcquire }: Props) {
     pileup_correction: pileup,
     arbitrary_steps: parseArbitrary(),
     dark_reference_id: darkRefId || undefined,
+    cooloff_s: cooloff > 0 ? cooloff : undefined,
   })
 
   const submit = () => onAcquire(buildParams())
+
+  const addToQueue = () => {
+    const count = addQueueItem('gated', buildParams() as unknown as Record<string, unknown>)
+    setQueueMessage(`Added — queue now has ${count} item${count === 1 ? '' : 's'} (see the Queue tab).`)
+  }
 
   const applyPreset = (params: Record<string, unknown>) => {
     if (typeof params.bit_depth === 'number') setBitDepth(params.bit_depth)
@@ -179,6 +188,24 @@ export function GatedPanel({ systemInfo, disabled, onAcquire }: Props) {
           onChange={(e) => setArbitrary(e.target.value)}
         />
       </label>
+      <label>
+        Cool-off between gate steps (s)
+        <input
+          type="number"
+          min={0}
+          max={600}
+          step={0.5}
+          value={cooloff}
+          onChange={(e) => setCooloff(Math.max(0, Number(e.target.value)))}
+        />
+      </label>
+      {cooloff > 0 && (
+        <p className="muted">
+          Paced mode: one vendor command per gate step with {cooloff}s cool-off between
+          steps (lets the sensor shed heat). A dark reference must be measured with the
+          same cool-off to be applicable.
+        </p>
+      )}
       <label className="checkbox">
         <input type="checkbox" checked={overlap} onChange={(e) => setOverlap(e.target.checked)} />
         Read/exposure overlap
@@ -204,6 +231,10 @@ export function GatedPanel({ systemInfo, disabled, onAcquire }: Props) {
       <button type="button" onClick={submit} disabled={disabled}>
         {disabled ? 'Busy…' : 'Acquire'}
       </button>
+      <button type="button" onClick={addToQueue}>
+        Add to queue
+      </button>
+      {queueMessage && <p className="muted">{queueMessage}</p>}
       <PresetSelector
         mode="gated"
         currentParams={buildParams() as unknown as Record<string, unknown>}
