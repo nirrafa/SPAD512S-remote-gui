@@ -79,6 +79,27 @@ def test_auto_protect_actually_lowers_vex(client: TestClient, vendor: MockVendor
     assert second["vex"] <= vex_max
 
 
+def test_vex_reduced_latches_until_manual_set(
+    client: TestClient, vendor: MockVendorServer
+) -> None:
+    """The auto-protect warning must survive the poll that follows the
+    reduction (auto-protect itself puts vex back in range — an in-range
+    unlatch would erase the warning immediately), and clear only on a
+    deliberate manual bias change."""
+    vex_max = client.get("/api/health/config").json()["vex_max"]
+    vendor.set_voltage("vex", vex_max + 5.0)
+
+    client.get("/api/health/readings")  # triggers the reduction
+    later = client.get("/api/health/readings").json()  # vex now within range
+    assert later["vex_reduced"] is True  # still latched
+    assert any(a["type"] == "vex_reduced" for a in later["alarms"])
+
+    ok = client.post("/api/settings/vex", json={"vex": 20.0}).json()
+    assert ok["status"] == "ok"
+    cleared = client.get("/api/health/readings").json()
+    assert cleared["vex_reduced"] is False
+
+
 def test_readings_expose_validity_and_timestamp(client: TestClient) -> None:
     """B-31: readings carry a validity flag + timestamp rather than looking live forever."""
     r = client.get("/api/health/readings").json()
