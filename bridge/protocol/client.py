@@ -20,10 +20,16 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import logging
 from collections.abc import Awaitable, Callable
 
 from bridge.protocol import commands
 from bridge.protocol.decoder import SystemInfo, parse_system_info
+
+# warning-level so the messages are visible in the launcher console even under
+# uvicorn's default logging config — lab diagnosis happens from photos of that
+# window.
+logger = logging.getLogger("bridge.protocol")
 
 _BREAKDOWN_START = (
     "The breakdown calibration process will start soon.",
@@ -122,23 +128,30 @@ class ProtocolClient:
 
     async def _connect(self) -> None:
         reader, writer = await asyncio.open_connection(self.host, self.port)
-        await reader.readline()  # welcome banner
+        try:
+            await reader.readline()  # welcome banner
 
-        writer.write(commands.info().encode())
-        await writer.drain()
-        first = await self._read_text(reader)
-        if any(phrase in first for phrase in _BREAKDOWN_START):
-            await self._await_breakdown(reader)
+            writer.write(commands.info().encode())
+            await writer.drain()
+            first = await self._read_text(reader)
+            if any(phrase in first for phrase in _BREAKDOWN_START):
+                await self._await_breakdown(reader)
 
-        writer.write(commands.info().encode())
-        await writer.drain()
-        info_text = await self._read_text(reader)
+            writer.write(commands.info().encode())
+            await writer.drain()
+            info_text = await self._read_text(reader)
+            self.system_info = parse_system_info(info_text)
+        except BaseException:
+            # A cancelled/failed handshake (e.g. wait_for expiring on a slow
+            # machine) must not leak a half-open socket the peer keeps serving.
+            writer.close()
+            raise
 
         self._reader = reader
         self._writer = writer
-        self.system_info = parse_system_info(info_text)
         await self._set_connected(True)
         self._start_idle_watch()
+        logger.warning("vendor connected (%s:%s)", self.host, self.port)
 
     async def _await_breakdown(self, reader: asyncio.StreamReader) -> None:
         while True:
@@ -201,12 +214,24 @@ class ProtocolClient:
             data = await reader.read(1)
         except asyncio.CancelledError:
             raise
-        except (OSError, ConnectionError):
+        except (OSError, ConnectionError) as exc:
+            logger.warning("vendor connection error while idle: %r", exc)
             await self._handle_disconnect()
             return
         if data == b"":  # peer closed the connection
+            logger.warning("vendor closed the connection (EOF while idle)")
             await self._handle_disconnect()
         else:  # unexpected idle data: framing broke — reconnect clean
+            # Grab whatever else is already buffered so the log shows the
+            # whole stray message, not just one byte — this is the key
+            # diagnostic for stream-desync bugs (B-38).
+            extra = b""
+            with contextlib.suppress(Exception):
+                extra = await asyncio.wait_for(reader.read(4096), 0.2)
+            logger.warning(
+                "unexpected data while idle (stream desync) — reconnecting; stray=%r",
+                (data + extra)[:200],
+            )
             await self._handle_disconnect()
 
     # --- command I/O ----------------------------------------------------------
@@ -220,6 +245,7 @@ class ProtocolClient:
                 await writer.drain()
                 text = await self._read_text(reader)
             except (TimeoutError, OSError, ConnectionError) as exc:
+                logger.warning("command %r failed: %r — reconnecting", command[:20], exc)
                 await self._handle_disconnect()
                 raise NotConnectedError("vendor disconnected during command") from exc
             self._start_idle_watch()
@@ -236,11 +262,13 @@ class ProtocolClient:
                 await writer.drain()
                 data = await self._read_binary(reader, expected_bytes)
             except (TimeoutError, OSError, ConnectionError) as exc:
+                logger.warning("acquire %r failed: %r — reconnecting", command[:20], exc)
                 await self._handle_disconnect()
                 raise NotConnectedError("vendor disconnected during acquisition") from exc
             except _StreamDesync as exc:
                 # The stream produced a wrong-length payload — reconnect so a
                 # single bad frame cannot poison every later command.
+                logger.warning("stream desync on %r: %s — reconnecting", command[:20], exc)
                 await self._handle_disconnect()
                 raise ProtocolError(str(exc)) from exc
             self._start_idle_watch()
