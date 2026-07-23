@@ -1,9 +1,20 @@
 """Async TCP client for the vendor cSPAD protocol.
 
 Owns the single connection to the vendor (or mock) server. Commands are
-serialized through an asyncio lock; between commands an idle EOF watcher detects
-passive disconnects so ``/api/status`` reflects reality without polling the
-hardware. A background task auto-reconnects with exponential backoff.
+serialized through an asyncio lock; between commands an idle EOF watcher
+detects passive disconnects so ``/api/status`` reflects reality without
+polling the hardware. A background task auto-reconnects with exponential
+backoff.
+
+The protocol is strict lockstep (one request, one response), so **any byte
+arriving while idle means framing is broken** — the original watcher silently
+swallowed such bytes, desyncing the stream for the rest of the session; the
+first lab smoke test (Windows) hit this as "acquisition length mismatch:
+expected 262144, got 262170" (a stray 26-byte text reply glued onto frame
+data, failing every acquisition afterwards). Now both desync symptoms
+self-heal by dropping the connection so auto-reconnect restores a clean
+stream: idle-arriving data triggers an immediate reconnect, and a
+wrong-length acquisition payload resets before surfacing its ProtocolError.
 """
 from __future__ import annotations
 
@@ -33,6 +44,13 @@ class ProtocolError(RuntimeError):
     Distinct from :class:`NotConnectedError`: the connection is healthy, so the
     caller should surface the error rather than trigger a reconnect.
     """
+
+
+class _StreamDesync(RuntimeError):
+    """Internal: the byte stream no longer lines up with request/response
+    framing (wrong-length payload). ``send_acquire`` converts this into a
+    :class:`ProtocolError` *after* dropping the connection, so the auto-
+    reconnect restores a clean stream instead of every later command failing."""
 
 
 class ProtocolClient:
@@ -168,6 +186,14 @@ class ProtocolClient:
             self._idle_task = None
 
     async def _idle_watch(self) -> None:
+        """Detect peer EOF while no command is in flight.
+
+        In this strict lockstep protocol nothing may arrive while idle, so any
+        data here means the stream is desynced (a late reply after a timeout,
+        a vendor quirk). Swallowing it silently poisoned every later command
+        (the lab's expected-262144-got-262170 bug) — instead, drop the
+        connection so auto-reconnect restores a clean stream.
+        """
         reader = self._reader
         if reader is None:  # disconnected before this task ran
             return
@@ -179,6 +205,8 @@ class ProtocolClient:
             await self._handle_disconnect()
             return
         if data == b"":  # peer closed the connection
+            await self._handle_disconnect()
+        else:  # unexpected idle data: framing broke — reconnect clean
             await self._handle_disconnect()
 
     # --- command I/O ----------------------------------------------------------
@@ -210,6 +238,11 @@ class ProtocolClient:
             except (TimeoutError, OSError, ConnectionError) as exc:
                 await self._handle_disconnect()
                 raise NotConnectedError("vendor disconnected during acquisition") from exc
+            except _StreamDesync as exc:
+                # The stream produced a wrong-length payload — reconnect so a
+                # single bad frame cannot poison every later command.
+                await self._handle_disconnect()
+                raise ProtocolError(str(exc)) from exc
             self._start_idle_watch()
             return data
 
@@ -259,7 +292,8 @@ class ProtocolClient:
         if payload.lstrip().startswith(b"ERROR"):
             raise ProtocolError(payload.decode("utf-8", errors="ignore").strip())
         if expected_bytes is not None and len(payload) != expected_bytes:
-            raise ProtocolError(
+            raise _StreamDesync(
                 f"acquisition length mismatch: expected {expected_bytes}, got {len(payload)}"
+                " (connection reset to recover)"
             )
         return payload
