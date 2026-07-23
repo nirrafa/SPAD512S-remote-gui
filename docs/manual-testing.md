@@ -7,6 +7,28 @@ mock vendor server that pretends to be the SPAD512² camera.
 
 ---
 
+## Option 0 — One double-click (macOS, easiest)
+
+In Finder, open the project's `launchers` folder and double-click
+**`Start SPAD (Mock + GUI).command`**. It starts the mock camera + the bridge and
+opens your browser at **http://localhost:8080** — the full GUI (Intensity, Gated,
+FLIM, Raw 1-bit, Live, Sweep, Calibration, Health, Log), "vendor connected" in
+green. Ctrl+C in the terminal window (or close it) to stop everything.
+
+First time only, run this in a terminal from the project root:
+
+```
+python3.11 -m venv .venv && source .venv/bin/activate && pip install -e ".[dev]"
+```
+
+(On the lab's **Windows** machine, the equivalent one-click path is
+[windows_smoke_test.md](windows_smoke_test.md) — including a practice mode that
+uses this same mock.)
+
+Everything below is for when you want to drive the pieces **by hand** instead.
+
+---
+
 ## First, two things that confuse everyone
 
 **1. Some commands print nothing — that is success.**
@@ -130,29 +152,28 @@ Expect parsed FPGA serials / sensor size / features, and laser + frame frequenci
 **See the saved data:**
 
 ```
-ls data/intensity_images
+ls data/intensity_images/acq00001
 ```
 
-Expect a folder like `acq00001` containing a saved `.npy` array.
+Expect `IMG00000.png` (one per frame) plus `sidecar.json` (the full parameter
+record). If the acquisition was made with "Run reducer" ticked, also
+`meta_acq00001.json` + `movie_arr_acq00001.npy` (the analysis-pipeline format).
 
-### Easiest of all: the built-in API page
+### The browser GUI
+
+While the bridge (Terminal B) is running, just open **http://localhost:8080** —
+the bridge serves the built GUI itself (no Vite/npm needed). All tabs work
+against the mock, including dark-reference correction and the WB sliders.
+If the page is blank, build the GUI once: `cd frontend && npm run build`.
+
+(For frontend *development* with hot reload, `cd frontend && npm run dev` still
+works — Vite proxies `/api` and `/ws` to the bridge on 8080.)
+
+### The built-in API page
 
 Open **http://localhost:8080/docs** — FastAPI auto-generates an interactive page with
 every endpoint. Click "Try it out", fill the form, hit Execute, see the response. No
 `curl` needed.
-
-### Try the browser GUI (optional)
-
-A fourth terminal:
-
-```
-cd frontend
-npm run dev
-```
-
-Open the printed URL. Vite proxies `/api` and `/ws` to the bridge on 8080, so you can
-drive intensity/gated acquisitions, watch the preview render on the canvas, and scrub
-gate steps.
 
 ### When you're done
 
