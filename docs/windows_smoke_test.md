@@ -90,8 +90,10 @@ and continue to the next item where possible.
 | 7 | **FLIM** tab → Calibrate IRF → Acquire FLIM | Lifetime map + phasor cloud appear |
 | 8 | **Intensity** tab → cap the sensor → "Measure dark reference" → uncap → select the reference → Acquire | Green **dark-corrected** badge; image looks cleaner than an uncorrected one |
 | 9 | Same as 8 but on the **Gated** tab | Same: badge + cleaner stack; use the **WB sliders** to inspect faint noise |
-| 10 | **Log** tab | Every run above is listed with its settings |
-| 11 | Find the saved folder (the "saved:" path from item 3) in File Explorer | It contains IMG…png files + `sidecar.json` (+ `meta_*.json` / `movie_arr_*.npy` if "Run reducer" was ticked) |
+| 10 | **Gated** tab → set "Cool-off between gate steps" to 5 → Acquire | The run visibly pauses ~5 s between gate steps (watch the step previews arrive slowly); result looks like a normal gated stack |
+| 11 | **Intensity** tab → "Add to queue"; **Gated** tab → "Add to queue"; then **Queue** tab → set repeats → Run series | Items run one after another by themselves; status table fills in with "done" + saved paths |
+| 12 | **Log** tab | Every run above is listed with its settings (queued runs included) |
+| 13 | Find the saved folder (the "saved:" path from item 3) in File Explorer | It contains IMG…png files + `sidecar.json` (+ `meta_*.json` / `movie_arr_*.npy` if "Run reducer" was ticked) |
 
 **If nothing works at all** (item 1 already red): the most useful thing to
 check is the vendor software's connection settings — the bridge expects the
