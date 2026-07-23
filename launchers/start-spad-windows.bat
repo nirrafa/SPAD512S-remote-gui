@@ -9,7 +9,6 @@ echo.
 echo  Make sure the Pi Imaging vendor software is ALREADY
 echo  running on this computer before continuing.
 echo.
-
 rem ---- find Python ----------------------------------
 set "PY=py -3"
 py -3 --version >nul 2>nul
@@ -20,7 +19,7 @@ if errorlevel 1 goto nopython
 if errorlevel 1 goto oldpython
 
 rem ---- first-time setup -----------------------------
-if exist ".venv\Scripts\python.exe" goto run
+if exist ".venv\Scripts\python.exe" goto ports
 echo  First-time setup: preparing the Python environment.
 echo  This needs internet and takes a few minutes. Please wait...
 echo.
@@ -33,15 +32,22 @@ echo.
 echo  Setup finished!
 echo.
 
-:run
+:ports
+rem ---- pick a free port (lab PCs often have 8080 taken) ----
+set "BRIDGEPORT="
+for /f "usebackq delims=" %%p in (`".venv\Scripts\python.exe" launchers\pick_port.py 8080 8517 8518 8519`) do set "BRIDGEPORT=%%p"
+if not defined BRIDGEPORT goto noport
+
 echo  Starting the SPAD bridge...
-echo  A browser window will open in a few seconds.
+echo.
+echo  The GUI address is:  http://localhost:%BRIDGEPORT%
+echo  A browser window will open there in a few seconds.
 echo.
 echo  KEEP THIS BLACK WINDOW OPEN while you work.
 echo  To stop everything: just close this window.
 echo.
-start "" /min cmd /c "timeout /t 6 /nobreak >nul & start http://localhost:8080"
-".venv\Scripts\python.exe" -m uvicorn bridge.main:app --port 8080
+start "" /min cmd /c "timeout /t 6 /nobreak >nul & start http://localhost:%BRIDGEPORT%"
+".venv\Scripts\python.exe" -m uvicorn bridge.main:app --port %BRIDGEPORT% --no-use-colors
 echo.
 echo  The bridge has stopped.
 pause
@@ -64,5 +70,11 @@ exit /b 1
 echo  [PROBLEM] The first-time setup did not finish.
 echo  Most common cause: no internet connection on this computer.
 echo  Connect to the internet and double-click this file again.
+pause
+exit /b 1
+
+:noport
+echo  [PROBLEM] Could not find a free network port for the GUI.
+echo  Restart the computer and try again, or send a photo of this window.
 pause
 exit /b 1

@@ -49,8 +49,13 @@ fake camera. Do this while the vendor's Pi Imaging software is **closed**.
 3. A black window opens. **The very first time, it sets itself up — this
    takes a few minutes and needs internet.** Just wait; it tells you what
    it's doing.
-4. Your browser opens by itself at `http://localhost:8080`.
+4. Your browser opens by itself at the address printed in the black window
+   (usually `http://localhost:8080` — if another program on the PC already
+   uses that port, the launcher automatically picks a nearby free one and
+   prints it, e.g. `http://localhost:8517`).
    - If the page shows an error, wait 5 seconds and press **F5** (refresh).
+   - If the page looks like some *other* program (a strange 404 / error page),
+     check the black window for the correct address and go there.
 5. You should see **"SPAD512² Remote Control"** with **vendor connected** in
    green at the top left. Click **Acquire** on the Intensity tab — a colorful
    noisy image appears. **That's it — everything works.**
@@ -114,7 +119,8 @@ error in the black window.
 | Double-click does nothing / window flashes and disappears | Right-click the `.bat` → "Run as administrator" once; if it still flashes, take a photo of it (record your screen with your phone) |
 | "Windows protected your PC" | More info → Run anyway |
 | A firewall popup appears | Click **Allow access** |
-| Browser page says "can't be reached" | Wait 5–10 seconds, press F5 |
+| Browser page says "can't be reached" | Wait 5–10 seconds, press F5 — and check the black window for the exact address (the port can differ from 8080) |
+| Browser shows a weird error page from some *other* program (e.g. "Access Error: 404") | Another program on this PC owns that port. The launcher prints the address it actually chose (e.g. `http://localhost:8517`) — use that one |
 | "vendor disconnected" in red | Start the Pi Imaging vendor software; the bridge reconnects on its own within ~10 s |
 | "[PROBLEM] Python is not installed" | Do Step 1 — and remember the **PATH checkbox** |
 | First-time setup fails | The PC probably has no internet; connect it and double-click again |
